@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>鲜知贴</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="鲜知贴首页">
+      <span class="brand-mark">鲜</span>
+      <span><strong>鲜知贴</strong><small>冰箱鲜度工作台</small></span>
+    </a>
+    <nav id="mainNav" class="nav hidden" aria-label="主导航">
+      <button type="button" class="active" data-view-target="overview">概览</button>
+      <button type="button" data-view-target="foods">食材</button>
+      <button type="button" data-view-target="display">墨水屏</button>
+      <button type="button" data-view-target="devices">设备</button>
+      <button type="button" data-view-target="users">用户</button>
+    </nav>
+    <div id="sessionActions" class="session hidden">
+      <span id="accountName"></span>
+      <button class="quiet" id="logout" type="button">退出</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section id="loginPanel" class="login-layout">
+      <div class="login-intro">
+        <p class="eyebrow">四色墨水屏 · 到期提醒</p>
+        <h1>让冰箱里的新鲜<br>一眼可见</h1>
+        <p>管理存放时间，按紧急程度自动生成低功耗墨水屏画面。</p>
+      </div>
+      <section class="panel login-card">
+        <div class="auth-switch" role="tablist" aria-label="账号入口">
+          <button class="active" type="button" data-auth-mode="login">登录</button>
+          <button type="button" data-auth-mode="register">注册</button>
+        </div>
+        <h2 id="authTitle">登录鲜知贴</h2>
+        <p id="authHint" class="muted">进入你的本地家庭工作台</p>
+        <form id="loginForm" class="form login-form">
+          <label>账号或邮箱<input name="login" autocomplete="username" value="admin" required></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" placeholder="输入配置的密码" required></label>
+          <button class="primary" type="submit">进入工作台</button>
+        </form>
+        <form id="registerForm" class="form login-form hidden">
+          <label>邮箱<input name="email" type="email" autocomplete="email" placeholder="name@example.com" required></label>
+          <label>显示名<input name="displayName" maxlength="40" autocomplete="name" placeholder="例如：小鹿"></label>
+          <label>密码<input name="password" type="password" autocomplete="new-password" minlength="6" placeholder="至少 6 位" required></label>
+          <button class="primary" type="submit">创建账号</button>
+        </form>
+      </section>
+    </section>
+
+    <section id="workspace" class="hidden">
+      <section class="view active" data-view-panel="overview" aria-label="概览">
+        <div class="bento overview-grid">
+          <article class="tile welcome">
+            <p class="eyebrow">今日冰箱状态</p>
+            <h1>你好，<span id="welcomeUser">admin</span></h1>
+            <p id="todayText" class="muted"></p>
+            <button class="primary compact" type="button" data-view-target="foods" data-new-food>添加食材</button>
+          </article>
+          <article class="tile stat total"><span>全部食材</span><strong id="totalCount">0</strong><small>项记录</small></article>
+          <article class="tile stat danger"><span>已经过期</span><strong id="expiredCount">0</strong><small>需要处理</small></article>
+          <article class="tile stat warning"><span>三天内到期</span><strong id="expiringCount">0</strong><small>优先食用</small></article>
+          <article class="tile urgent">
+            <div class="tile-head">
+              <div><p class="eyebrow">优先处理</p><h2>最近到期</h2></div>
+              <button class="link" type="button" data-view-target="foods">管理全部</button>
+            </div>
+            <div id="overviewFoods" class="priority-list"></div>
+          </article>
+          <article class="tile screen-summary">
+            <div class="tile-head">
+              <div><p class="eyebrow">电子纸同步</p><h2>墨水屏</h2></div>
+              <button class="link" type="button" data-view-target="display">查看画面</button>
+            </div>
+            <p class="screen-copy">竖屏显示最需处理的 9 项，更新后设备按定时周期拉取新画面。</p>
+            <div id="overviewDevice" class="sync-state"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" data-view-panel="foods" aria-label="食材管理">
+        <div class="page-title">
+          <div><p class="eyebrow">食材管理</p><h1>维护冰箱内容</h1></div>
+          <span id="foodCount" class="pill"></span>
+        </div>
+        <div class="food-layout">
+          <section class="panel entry">
+            <div class="section-head"><h2 id="formTitle">添加食材</h2><button id="cancelEdit" class="link hidden" type="button">取消编辑</button></div>
+            <form id="foodForm" class="form">
+              <input type="hidden" name="id">
+              <div class="form-grid">
+                <label>食材名称<input name="name" maxlength="40" placeholder="例如：牛奶" required></label>
+                <label>分类
+                  <select name="category">
+                    <option>水果</option><option>蔬菜</option><option>肉类</option><option>海鲜</option>
+                    <option>乳品</option><option>蛋类</option><option>饮料</option><option>豆制品</option>
+                    <option>熟食</option><option>调味品</option><option>冷冻</option><option>甜点</option><option>其他</option>
+                  </select>
+                </label>
+              </div>
+              <label>数量说明<input name="quantityText" maxlength="30" placeholder="例如：1 瓶 / 200g"></label>
+              <fieldset>
+                <legend>到期日期</legend>
+                <label>直接填写到期日<input name="expiresOn" type="date"></label>
+                <div class="or">或按保鲜天数计算</div>
+                <div class="form-grid">
+                  <label>购买/生产日<input name="startDate" type="date"></label>
+                  <label>保鲜天数<input name="shelfLifeDays" type="number" min="0" max="3650" placeholder="7"></label>
+                </div>
+              </fieldset>
+              <button id="saveFood" class="primary" type="submit">保存食材</button>
+            </form>
+          </section>
+          <section class="panel collection">
+            <div class="section-head"><h2>全部记录</h2><span class="muted">按紧急程度排序</span></div>
+            <div class="table-frame">
+              <table class="food-table">
+                <thead>
+                  <tr><th>食材</th><th>分类</th><th>到期日</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody id="foods"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" data-view-panel="display" aria-label="墨水屏画面">
+        <div class="page-title">
+          <div><p class="eyebrow">四色电子纸</p><h1>屏幕画面</h1></div>
+          <div class="preview-tools">
+            <label class="inline-select">方向
+              <select id="previewOrientation">
+                <option value="portrait" selected>竖屏（设备默认）</option>
+                <option value="landscape">横屏（对照）</option>
+              </select>
+            </label>
+            <button id="refreshPreview" class="quiet" type="button">刷新预览</button>
+          </div>
+        </div>
+        <div class="display-layout">
+          <section class="panel display-card">
+            <div class="screen portrait" id="screenFrame">
+              <div class="screen-scale-frame">
+                <iframe id="screenPreview" title="墨水屏画面预览"></iframe>
+              </div>
+            </div>
+          </section>
+          <aside class="panel display-notes">
+            <h2>显示说明</h2>
+            <div class="note"><strong>9 项</strong><span>竖屏展示上限</span></div>
+            <div class="note"><strong>30 分钟</strong><span>设备常规定时检查</span></div>
+            <div class="note"><strong>96 KB</strong><span>四色原生帧协议</span></div>
+            <p class="muted">红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" data-view-panel="devices" aria-label="设备">
+        <div class="page-title">
+          <div><p class="eyebrow">硬件连接</p><h1>屏幕设备</h1></div>
+        </div>
+        <div class="device-layout">
+          <section class="panel">
+            <h2>绑定新设备</h2>
+            <p class="muted">设备注册完成后，输入屏幕上出现的绑定码。</p>
+            <form id="claimForm" class="claim form">
+              <label>绑定码<input name="claimCode" placeholder="例如 TEST01" required></label>
+              <button class="primary" type="submit">绑定设备</button>
+            </form>
+          </section>
+          <section class="panel">
+            <div class="section-head"><h2>已关联设备</h2><span class="status-dot">在线状态</span></div>
+            <div id="devices" class="devices"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" data-view-panel="users" aria-label="用户管理">
+        <div class="page-title">
+          <div><p class="eyebrow">用户管理</p><h1>账号与成员</h1></div>
+          <span id="userCount" class="pill"></span>
+        </div>
+        <div class="user-layout">
+          <section class="panel account-card">
+            <div class="section-head"><h2>当前账号</h2><span id="accountRole" class="role-pill"></span></div>
+            <div id="accountPanel" class="account-summary"></div>
+          </section>
+          <section class="panel collection">
+            <div class="section-head"><h2>已注册用户</h2><span id="userScope" class="muted"></span></div>
+            <div id="users" class="user-list"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+    <div id="dialogOverlay" class="dialog-overlay hidden" aria-hidden="true">
+      <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody">
+        <p id="dialogEyebrow" class="dialog-eyebrow">需要确认</p>
+        <h2 id="dialogTitle">确认操作</h2>
+        <p id="dialogBody" class="dialog-body"></p>
+        <div class="dialog-actions">
+          <button id="dialogCancel" class="dialog-cancel" type="button">取消</button>
+          <button id="dialogConfirm" class="dialog-confirm" type="button">确定</button>
+        </div>
+      </section>
+    </div>
+    <p id="message" class="message" role="status"></p>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

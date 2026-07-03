@@ -1,0 +1,20 @@
+{
+  "name": "fridge-tracker-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local H5 and four-color e-paper frame server for XianZhi Tie.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning src/server.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/domain.js && node --check src/renderer.js && node --check src/users.js && node --check public/app.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "playwright": "^1.60.0",
+    "pngjs": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
