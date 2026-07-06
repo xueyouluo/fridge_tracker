@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
-const state = { user: null, foods: [], devices: [], users: [], canManageUsers: false, today: "", editingId: null, view: "overview", pairingCode: null };
+const state = { user: null, foods: [], devices: [], users: [], canManageUsers: false, today: "", editingId: null, view: "overview" };
 const views = new Set(["overview", "foods", "display", "devices", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
@@ -275,7 +275,6 @@ function formatDate(value) {
 }
 
 function renderPairingCode(result) {
-  state.pairingCode = result;
   $("#pairingCodeText").textContent = result.code;
   $("#pairingCodeExpires").textContent = `有效期至 ${formatTime(result.expiresAt)}`;
   $("#pairingCodePanel").classList.remove("hidden");

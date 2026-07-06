@@ -21,7 +21,8 @@
 
 #define EPD_SCK   12
 #define EPD_MOSI  11
-#define EPD_MISO  13
+// The e-paper adapter is write-only in this project, so MISO is not wired.
+#define EPD_MISO  -1
 
 #if FRIDGE_USE_GDEM0397F81
 GxEPD2_4C<GxEPD2_397c_GDEM0397F81, GxEPD2_397c_GDEM0397F81::HEIGHT / 2> display(
@@ -46,8 +47,7 @@ struct DeviceSettings {
 enum FrameResult {
   FRAME_UPDATED,
   FRAME_UNCHANGED,
-  FRAME_FAILED,
-  FRAME_NOT_CLAIMED
+  FRAME_FAILED
 };
 
 Preferences prefs;
@@ -142,8 +142,6 @@ void setup() {
   FrameResult result = fetchNativeFrame();
   if (result == FRAME_UPDATED) {
     drawStoredImage();
-  } else if (result == FRAME_NOT_CLAIMED && !hasStoredImage()) {
-    drawStatusText("Device not paired", "Generate H5 code", "Run setup again");
   } else if (result == FRAME_FAILED && !hasStoredImage()) {
     drawStatusText(errorTitle, errorDetail, errorHint);
   } else {
@@ -153,7 +151,7 @@ void setup() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   display.hibernate();
-  sleepForNextCheck(result == FRAME_NOT_CLAIMED && !hasStoredImage());
+  sleepForNextCheck(false);
 }
 
 void loop() {
@@ -172,7 +170,7 @@ bool loadSettings() {
   settings.ssid = prefs.getString("ssid", "");
   settings.password = prefs.getString("pass", "");
   settings.apiBaseUrl = prefs.getString("api", DEFAULT_API_BASE_URL);
-  settings.pairingCode = prefs.getString("pair", prefs.getString("claim", ""));
+  settings.pairingCode = prefs.getString("pair", "");
   settings.serial = prefs.getString("serial", defaultSerial());
   settings.deviceToken = prefs.getString("token", "");
   settings.etag = prefs.getString("etag", "");
@@ -258,7 +256,6 @@ void runProvisioningPortal(uint32_t timeoutMs) {
     }
     prefs.putString("api", newApi);
     prefs.putString("pair", newPairing);
-    prefs.remove("claim");
     prefs.remove("prov");
     prefs.putString("serial", settings.serial);
     if (!newToken.isEmpty()) {
@@ -426,9 +423,11 @@ bool registerDevice() {
   }
 
   settings.deviceToken = token;
+  settings.pairingCode = "";
   settings.etag = "";
   prefs.begin("fridge", false);
   prefs.putString("token", settings.deviceToken);
+  prefs.remove("pair");
   prefs.remove("etag");
   prefs.end();
   Serial.println("Device registration completed.");
@@ -463,8 +462,8 @@ FrameResult fetchNativeFrame() {
     return FRAME_FAILED;
   }
 
-  const char* keys[] = { "ETag", "X-Frame-Revision" };
-  http.collectHeaders(keys, 2);
+  const char* keys[] = { "ETag" };
+  http.collectHeaders(keys, 1);
   http.setTimeout(DOWNLOAD_TIMEOUT_MS);
   http.addHeader("Authorization", "Bearer " + settings.deviceToken);
   if (!settings.etag.isEmpty()) {
@@ -476,11 +475,6 @@ FrameResult fetchNativeFrame() {
     Serial.println("Frame is unchanged.");
     http.end();
     return FRAME_UNCHANGED;
-  }
-  if (status == HTTP_CODE_CONFLICT) {
-    Serial.println("Device is registered but not yet claimed.");
-    http.end();
-    return FRAME_NOT_CLAIMED;
   }
   if (status != HTTP_CODE_OK) {
     char detail[32];

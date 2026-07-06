@@ -7,6 +7,5 @@
   "adminLogin": "admin",
   "adminEmail": "admin@example.com",
   "adminPassword": "change-this-password",
-  "demoDeviceToken": "change-this-device-token",
-  "demoClaimCode": "FRIDGE-DEMO"
+  "demoDeviceToken": "change-this-device-token"
 }

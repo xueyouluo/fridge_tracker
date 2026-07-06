@@ -8,6 +8,7 @@ const { DatabaseSync } = require("node:sqlite");
 const {
   FRAME_BYTES,
   DEFAULT_DISPLAY_ORIENTATION,
+  addDays,
   decorateFood,
   displayOrientation,
   frameSnapshotKey,
@@ -42,8 +43,7 @@ const DEFAULT_CONFIG = {
   adminLogin: "admin",
   adminEmail: "",
   adminPassword: "fridge-demo",
-  demoDeviceToken: "local-fridge-device-token",
-  demoClaimCode: "FRIDGE-DEMO"
+  demoDeviceToken: "local-fridge-device-token"
 };
 
 const config = loadConfig();
@@ -92,7 +92,6 @@ function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       serial TEXT NOT NULL UNIQUE,
       owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      claim_code_hash TEXT NOT NULL,
       device_token_hash TEXT NOT NULL,
       panel_profile TEXT NOT NULL,
       last_seen_at TEXT,
@@ -119,14 +118,9 @@ function initializeDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS frame_revisions (
-      device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
-      revision INTEGER NOT NULL,
-      etag TEXT NOT NULL,
-      generated_at TEXT NOT NULL
-    );
   `);
   migrateUsersTable();
+  migrateDevicesTable();
 }
 
 function migrateUsersTable() {
@@ -139,6 +133,32 @@ function migrateUsersTable() {
   db.prepare("UPDATE users SET display_name = login WHERE display_name = ''").run();
   db.prepare("UPDATE users SET role = 'member' WHERE role IS NULL OR role = ''").run();
   db.prepare("UPDATE users SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''").run();
+}
+
+function migrateDevicesTable() {
+  db.exec("DROP TABLE IF EXISTS frame_revisions");
+  const columns = new Set(db.prepare("PRAGMA table_info(devices)").all().map((column) => column.name));
+  if (!columns.has("claim_code_hash")) return;
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    CREATE TABLE devices_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      serial TEXT NOT NULL UNIQUE,
+      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      device_token_hash TEXT NOT NULL,
+      panel_profile TEXT NOT NULL,
+      last_seen_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO devices_migrated
+      (id, serial, owner_id, device_token_hash, panel_profile, last_seen_at, created_at, updated_at)
+    SELECT id, serial, owner_id, device_token_hash, panel_profile, last_seen_at, created_at, updated_at
+    FROM devices;
+    DROP TABLE devices;
+    ALTER TABLE devices_migrated RENAME TO devices;
+    PRAGMA foreign_keys = ON;
+  `);
 }
 
 function seedLocalDemo() {
@@ -181,12 +201,11 @@ function seedLocalDemo() {
   if (!device) {
     db.prepare(`
       INSERT INTO devices
-        (serial, owner_id, claim_code_hash, device_token_hash, panel_profile, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (serial, owner_id, device_token_hash, panel_profile, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       "local-demo-screen",
       user.id,
-      sha256(config.demoClaimCode),
       sha256(config.demoDeviceToken),
       "gdem075f52",
       now,
@@ -209,16 +228,10 @@ function seedLocalDemo() {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const [name, category, quantityText, days] of examples) {
-      const expiresOn = addCalendarDays(today, days);
+      const expiresOn = addDays(today, days);
       insert.run(user.id, name, category, quantityText, expiresOn, now, now);
     }
   }
-}
-
-function addCalendarDays(dateKey, days) {
-  const date = new Date(`${dateKey}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function hashSecret(value) {
@@ -362,21 +375,6 @@ async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_OR
   return result;
 }
 
-function recordFrameRevision(deviceId, etag) {
-  const now = new Date().toISOString();
-  const previous = db.prepare("SELECT * FROM frame_revisions WHERE device_id = ?").get(deviceId);
-  if (!previous) {
-    db.prepare("INSERT INTO frame_revisions (device_id, revision, etag, generated_at) VALUES (?, ?, ?, ?)")
-      .run(deviceId, 1, etag, now);
-    return 1;
-  }
-  if (previous.etag === etag) return previous.revision;
-  const revision = previous.revision + 1;
-  db.prepare("UPDATE frame_revisions SET revision = ?, etag = ?, generated_at = ? WHERE device_id = ?")
-    .run(revision, etag, now, deviceId);
-  return revision;
-}
-
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -430,7 +428,6 @@ function publicDevice(device) {
     id: device.id,
     serial: device.serial,
     panelProfile: device.panel_profile,
-    paired: Boolean(device.owner_id),
     lastSeenAt: device.last_seen_at
   };
 }
@@ -458,7 +455,7 @@ function createDevicePairingCode(userId) {
   throw new Error("could not generate pairing code");
 }
 
-function consumeDevicePairingCode(value) {
+function findDevicePairingCode(value) {
   const code = normalizePairingCode(value);
   if (!code) return { error: "missing" };
   const now = new Date().toISOString();
@@ -466,11 +463,16 @@ function consumeDevicePairingCode(value) {
   if (!pairing) return { error: "not_found" };
   if (pairing.used_at) return { error: "used" };
   if (pairing.expires_at <= now) return { error: "expired" };
+  return { code, pairing };
+}
+
+function consumeDevicePairingCode(pairing, nowIso = new Date().toISOString()) {
+  if (pairing.expires_at <= nowIso) return { error: "expired" };
   const updated = db.prepare(`
     UPDATE device_pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?
-  `).run(now, pairing.id, now);
+  `).run(nowIso, pairing.id, nowIso);
   if (!updated.changes) return { error: "used" };
-  return { code, pairing };
+  return {};
 }
 
 function sendPairingCodeError(res, result) {
@@ -541,23 +543,32 @@ async function routeApi(req, res, url) {
     const serial = String(body.serial || "").trim().slice(0, 60);
     const panel = panelProfile(body.panel || "gdem075f52");
     if (!serial) throw new Error("serial is required");
-    const pairingResult = consumeDevicePairingCode(body.pairingCode || body.claimCode);
+    const pairingResult = findDevicePairingCode(body.pairingCode);
     if (pairingResult.error) {
       sendPairingCodeError(res, pairingResult);
       return true;
     }
+    const existing = db.prepare("SELECT * FROM devices WHERE serial = ?").get(serial);
+    if (existing?.owner_id && existing.owner_id !== pairingResult.pairing.user_id) {
+      sendJson(res, 409, { error: "device already belongs to another user" });
+      return true;
+    }
     const token = crypto.randomBytes(32).toString("hex");
     const now = new Date().toISOString();
-    const existing = db.prepare("SELECT * FROM devices WHERE serial = ?").get(serial);
+    const consumed = consumeDevicePairingCode(pairingResult.pairing, now);
+    if (consumed.error) {
+      sendPairingCodeError(res, consumed);
+      return true;
+    }
     if (existing) {
       db.prepare(`
-        UPDATE devices SET owner_id = ?, claim_code_hash = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
-      `).run(pairingResult.pairing.user_id, sha256(pairingResult.code), sha256(token), panel, now, existing.id);
+        UPDATE devices SET owner_id = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
+      `).run(pairingResult.pairing.user_id, sha256(token), panel, now, existing.id);
     } else {
       db.prepare(`
-        INSERT INTO devices (serial, owner_id, claim_code_hash, device_token_hash, panel_profile, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(serial, pairingResult.pairing.user_id, sha256(pairingResult.code), sha256(token), panel, now, now);
+        INSERT INTO devices (serial, owner_id, device_token_hash, panel_profile, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(serial, pairingResult.pairing.user_id, sha256(token), panel, now, now);
     }
     sendJson(res, 201, { serial, panelProfile: panel, deviceToken: token });
     return true;
@@ -567,23 +578,22 @@ async function routeApi(req, res, url) {
     const device = requireDevice(req, res);
     if (!device) return true;
     if (!device.owner_id) {
-      sendJson(res, 409, { error: "device has not been claimed" });
+      sendJson(res, 409, { error: "device has not been paired" });
       return true;
     }
     const panel = panelProfile(url.searchParams.get("panel") || device.panel_profile);
     const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
     const frame = await getRenderedFrame(device.owner_id, panel, orientation);
-    const revision = recordFrameRevision(device.id, frame.etag);
     db.prepare("UPDATE devices SET last_seen_at = ?, panel_profile = ?, updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), panel, new Date().toISOString(), device.id);
     if (req.headers["if-none-match"] === frame.etag) {
-      res.writeHead(304, { ETag: frame.etag, "X-Frame-Revision": revision, "Cache-Control": "no-cache" });
+      res.writeHead(304, { ETag: frame.etag, "Cache-Control": "no-cache" });
       res.end();
       return true;
     }
     const data = url.pathname.endsWith(".png") ? frame.png : frame.frame;
     const type = url.pathname.endsWith(".png") ? "image/png" : "application/octet-stream";
-    sendBuffer(res, 200, data, type, { ETag: frame.etag, "X-Frame-Revision": revision, "X-Panel-Profile": panel, "X-Display-Orientation": orientation });
+    sendBuffer(res, 200, data, type, { ETag: frame.etag, "X-Panel-Profile": panel, "X-Display-Orientation": orientation });
     return true;
   }
 
@@ -662,23 +672,6 @@ async function routeApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/devices/pairing-codes") {
     sendJson(res, 201, createDevicePairingCode(user.id));
-    return true;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/devices/claim") {
-    const body = await readJson(req);
-    const claimCode = String(body.claimCode || "").trim().toUpperCase();
-    const device = db.prepare("SELECT * FROM devices WHERE claim_code_hash = ?").get(sha256(claimCode));
-    if (!device) {
-      sendJson(res, 404, { error: "binding code not found" });
-      return true;
-    }
-    if (device.owner_id && device.owner_id !== user.id) {
-      sendJson(res, 409, { error: "device already belongs to another user" });
-      return true;
-    }
-    db.prepare("UPDATE devices SET owner_id = ?, updated_at = ? WHERE id = ?").run(user.id, new Date().toISOString(), device.id);
-    sendJson(res, 200, publicDevice({ ...device, owner_id: user.id }));
     return true;
   }
 

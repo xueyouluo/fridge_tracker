@@ -99,7 +99,6 @@ PATCH  /api/foods/:id
 DELETE /api/foods/:id
 GET    /api/devices
 POST   /api/devices/pairing-codes
-POST   /api/devices/claim        # 兼容旧的未归属设备认领流程
 GET    /api/display/preview?panel=gdem075f52&orientation=portrait
 GET    /api/display/frame.png?panel=gdem075f52&orientation=portrait
 ```
@@ -149,6 +148,10 @@ curl -X POST 'http://127.0.0.1:8788/api/device/register' \
   -H 'Content-Type: application/json' \
   -d '{"serial":"fridge-001","pairingCode":"A7K2Q9","panel":"gdem075f52"}'
 ```
+
+同一个设备序列号如果已经绑定到某个账号，只能由该账号使用新的配对码
+重新注册并轮换 token；其他账号尝试注册相同序列号会返回 `409`，配对码
+不会被消费。
 
 ## 验证
 
