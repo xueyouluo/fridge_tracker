@@ -92,6 +92,8 @@ README 中的演示设备 token；实际设备应注册并使用各自独立的 
 - USB CDC On Boot：`Enabled`
 - PSRAM：`OPI PSRAM`
 
+> 如果上传代码后墨水屏没有反应，可以将`Erase All Flash Before Sketch Upload`设置为`Enabled`，然后重新上传代码。
+
 串口监视器波特率为 `115200`。
 
 ## 接线
