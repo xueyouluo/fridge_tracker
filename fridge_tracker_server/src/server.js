@@ -25,6 +25,11 @@ const {
   normalizePassword,
   publicUser
 } = require("./users");
+const {
+  generatePairingCode,
+  normalizePairingCode,
+  pairingCodeExpiresAt
+} = require("./pairing");
 
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = process.env.FRIDGE_TRACKER_CONFIG || path.join(ROOT, "config.json");
@@ -38,8 +43,7 @@ const DEFAULT_CONFIG = {
   adminEmail: "",
   adminPassword: "fridge-demo",
   demoDeviceToken: "local-fridge-device-token",
-  demoClaimCode: "FRIDGE-DEMO",
-  provisioningKey: "local-provisioning-key"
+  demoClaimCode: "FRIDGE-DEMO"
 };
 
 const config = loadConfig();
@@ -94,6 +98,14 @@ function initializeDatabase() {
       last_seen_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS device_pairing_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      code_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS food_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -423,6 +435,55 @@ function publicDevice(device) {
   };
 }
 
+function cleanupPairingCodes(nowIso = new Date().toISOString()) {
+  db.prepare("DELETE FROM device_pairing_codes WHERE used_at IS NOT NULL OR expires_at <= ?").run(nowIso);
+}
+
+function createDevicePairingCode(userId) {
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = pairingCodeExpiresAt(now);
+  cleanupPairingCodes(createdAt);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = generatePairingCode();
+    const codeHash = sha256(code);
+    const existing = db.prepare("SELECT id FROM device_pairing_codes WHERE code_hash = ?").get(codeHash);
+    if (existing) continue;
+    db.prepare(`
+      INSERT INTO device_pairing_codes (user_id, code_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(userId, codeHash, expiresAt, createdAt);
+    return { code, expiresAt };
+  }
+  throw new Error("could not generate pairing code");
+}
+
+function consumeDevicePairingCode(value) {
+  const code = normalizePairingCode(value);
+  if (!code) return { error: "missing" };
+  const now = new Date().toISOString();
+  const pairing = db.prepare("SELECT * FROM device_pairing_codes WHERE code_hash = ?").get(sha256(code));
+  if (!pairing) return { error: "not_found" };
+  if (pairing.used_at) return { error: "used" };
+  if (pairing.expires_at <= now) return { error: "expired" };
+  const updated = db.prepare(`
+    UPDATE device_pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?
+  `).run(now, pairing.id, now);
+  if (!updated.changes) return { error: "used" };
+  return { code, pairing };
+}
+
+function sendPairingCodeError(res, result) {
+  const messages = {
+    missing: ["pairing code is required", 400],
+    not_found: ["pairing code not found", 404],
+    used: ["pairing code has already been used", 410],
+    expired: ["pairing code has expired", 410]
+  };
+  const [message, status] = messages[result.error] || ["invalid pairing code", 400];
+  sendJson(res, status, { error: message });
+}
+
 async function routeApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     sendJson(res, 200, { ok: true, timezone: config.timezone, frameBytes: FRAME_BYTES });
@@ -477,26 +538,26 @@ async function routeApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/device/register") {
     const body = await readJson(req);
-    if (String(req.headers["x-provisioning-key"] || body.provisioningKey || "") !== config.provisioningKey) {
-      sendJson(res, 401, { error: "invalid provisioning key" });
+    const serial = String(body.serial || "").trim().slice(0, 60);
+    const panel = panelProfile(body.panel || "gdem075f52");
+    if (!serial) throw new Error("serial is required");
+    const pairingResult = consumeDevicePairingCode(body.pairingCode || body.claimCode);
+    if (pairingResult.error) {
+      sendPairingCodeError(res, pairingResult);
       return true;
     }
-    const serial = String(body.serial || "").trim().slice(0, 60);
-    const claimCode = String(body.claimCode || "").trim().toUpperCase().slice(0, 30);
-    const panel = panelProfile(body.panel || "gdem075f52");
-    if (!serial || !claimCode) throw new Error("serial and claimCode are required");
     const token = crypto.randomBytes(32).toString("hex");
     const now = new Date().toISOString();
     const existing = db.prepare("SELECT * FROM devices WHERE serial = ?").get(serial);
     if (existing) {
       db.prepare(`
-        UPDATE devices SET claim_code_hash = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
-      `).run(sha256(claimCode), sha256(token), panel, now, existing.id);
+        UPDATE devices SET owner_id = ?, claim_code_hash = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
+      `).run(pairingResult.pairing.user_id, sha256(pairingResult.code), sha256(token), panel, now, existing.id);
     } else {
       db.prepare(`
-        INSERT INTO devices (serial, claim_code_hash, device_token_hash, panel_profile, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(serial, sha256(claimCode), sha256(token), panel, now, now);
+        INSERT INTO devices (serial, owner_id, claim_code_hash, device_token_hash, panel_profile, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(serial, pairingResult.pairing.user_id, sha256(pairingResult.code), sha256(token), panel, now, now);
     }
     sendJson(res, 201, { serial, panelProfile: panel, deviceToken: token });
     return true;
@@ -596,6 +657,11 @@ async function routeApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/devices") {
     sendJson(res, 200, { devices: db.prepare("SELECT * FROM devices WHERE owner_id = ?").all(user.id).map(publicDevice) });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/devices/pairing-codes") {
+    sendJson(res, 201, createDevicePairingCode(user.id));
     return true;
   }
 

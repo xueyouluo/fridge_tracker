@@ -16,7 +16,7 @@ const char PROVISIONING_PAGE[] PROGMEM = R"HTML(
     h1 { margin: 0 0 8px; font-size: 26px; }
     p { color: #56534c; line-height: 1.45; }
     label { display: block; margin: 14px 0 6px; font-weight: 700; font-size: 14px; }
-    input { width: 100%; height: 44px; border: 1px solid #c7c1b2; border-radius: 8px; padding: 0 11px; font: inherit; }
+    input, select { width: 100%; height: 44px; border: 1px solid #c7c1b2; border-radius: 8px; padding: 0 11px; font: inherit; background: white; }
     button { margin-top: 20px; width: 100%; height: 46px; border: 0; border-radius: 9px; color: white; background: #161616; font: inherit; font-weight: 800; }
     code { background: #eee9dc; padding: 2px 4px; border-radius: 4px; }
     .hint { font-size: 13px; }
@@ -29,20 +29,21 @@ const char PROVISIONING_PAGE[] PROGMEM = R"HTML(
       <p>将墨水屏连接到 Wi-Fi 与本地服务。</p>
       <form action="/save" method="post">
         <label for="ssid">Wi-Fi 名称</label>
+        <select id="ssidSelect" onchange="if(this.value)document.getElementById('ssid').value=this.value">
+          %SSID_OPTIONS%
+        </select>
         <input id="ssid" name="ssid" value="%SSID%" required>
         <label for="password">Wi-Fi 密码</label>
         <input id="password" name="password" type="password" placeholder="留空则保留已有密码">
         <label for="api">服务地址</label>
         <input id="api" name="api" value="%API%" placeholder="http://192.168.0.2:8788" required>
-        <label for="claim">绑定码</label>
-        <input id="claim" name="claim" value="%CLAIM%" placeholder="FRIDGE-001">
-        <label for="provisioning">配网注册密钥</label>
-        <input id="provisioning" name="provisioning" type="password" placeholder="注册新设备时必填">
+        <label for="pairing">设备配对码</label>
+        <input id="pairing" name="pairing" value="%PAIRING%" placeholder="在 H5 设备页生成的 6 位码">
         <label for="token">已有设备 token（可选）</label>
         <input id="token" name="token" type="password" placeholder="已注册的演示设备可直接填写">
         <button type="submit">保存并重启</button>
       </form>
-      <p class="hint">屏幕：<code>%PANEL%</code>。序列号：<code>%SERIAL%</code>。使用本地服务时请填写电脑的局域网 IP，不要填写 <code>127.0.0.1</code>。</p>
+      <p class="hint">屏幕：<code>%PANEL%</code>。序列号：<code>%SERIAL%</code>。手机浏览器无法读取已保存的 Wi-Fi 密码，密码仍需手动输入。使用本地服务时请填写电脑的局域网 IP，不要填写 <code>127.0.0.1</code>。</p>
     </section>
   </main>
 </body>

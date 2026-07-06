@@ -8,7 +8,7 @@
     "start": "node --no-warnings=ExperimentalWarning src/server.js",
     "dev": "node --no-warnings=ExperimentalWarning --watch src/server.js",
     "install:browsers": "playwright install chromium",
-    "check": "node --check src/server.js && node --check src/domain.js && node --check src/renderer.js && node --check src/users.js && node --check public/app.js",
+    "check": "node --check src/server.js && node --check src/domain.js && node --check src/renderer.js && node --check src/users.js && node --check src/pairing.js && node --check public/app.js",
     "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
   },
   "dependencies": {

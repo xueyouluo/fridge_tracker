@@ -58,6 +58,19 @@ cp config.example.json config.json
 例如 `http://192.168.0.117:8788`。不要在 ESP32 上填写
 `http://127.0.0.1:8788`。
 
+在 Mac 上可以用下面的命令查询当前 Wi-Fi 局域网 IP：
+
+```sh
+networksetup -getinfo Wi-Fi
+```
+
+输出里的 `IP address` 就是要填写的地址；例如 `192.168.0.101` 对应
+设备上的服务地址 `http://192.168.0.101:8788`。如果只想输出 IP，可用：
+
+```sh
+ipconfig getifaddr en0
+```
+
 ## 数据与显示规则
 
 - 添加食材时，可以直接填写到期日，也可以填写购买/生产日期和保鲜天数。
@@ -85,7 +98,8 @@ POST   /api/foods
 PATCH  /api/foods/:id
 DELETE /api/foods/:id
 GET    /api/devices
-POST   /api/devices/claim
+POST   /api/devices/pairing-codes
+POST   /api/devices/claim        # 兼容旧的未归属设备认领流程
 GET    /api/display/preview?panel=gdem075f52&orientation=portrait
 GET    /api/display/frame.png?panel=gdem075f52&orientation=portrait
 ```
@@ -127,13 +141,13 @@ curl -D - -H 'Authorization: Bearer local-fridge-device-token' \
   --output /tmp/fridge-frame.bin
 ```
 
-后续注册实体设备时，需要使用本地配置中的 provisioning key：
+后续注册实体设备时，先登录 H5，在“设备”页面生成一次性配对码，然后
+将该配对码填入设备配网页。调试 API 时也可以直接使用该配对码：
 
 ```sh
 curl -X POST 'http://127.0.0.1:8788/api/device/register' \
   -H 'Content-Type: application/json' \
-  -H 'X-Provisioning-Key: local-provisioning-key' \
-  -d '{"serial":"fridge-001","claimCode":"ABCD-1234","panel":"gdem075f52"}'
+  -d '{"serial":"fridge-001","pairingCode":"A7K2Q9","panel":"gdem075f52"}'
 ```
 
 ## 验证
@@ -145,5 +159,5 @@ npm test
 
 H5 页面可直接使用自动生成的示例食材查看效果。配套设备固件位于
 `../esp32_s3_epaper_fridge_tracker_4color`：
-固件通过配网页面配置 Wi-Fi，注册或接收设备 token，请求 `frame.bin`，
+固件通过配网页面配置 Wi-Fi、服务地址和一次性配对码，注册或接收设备 token，请求 `frame.bin`，
 处理 `ETag`，并将变化后的帧缓冲发送给 `display.drawNative()`。

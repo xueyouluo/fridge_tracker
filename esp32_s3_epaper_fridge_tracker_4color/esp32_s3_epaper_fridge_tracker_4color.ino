@@ -37,8 +37,7 @@ struct DeviceSettings {
   String ssid;
   String password;
   String apiBaseUrl;
-  String provisioningKey;
-  String claimCode;
+  String pairingCode;
   String serial;
   String deviceToken;
   String etag;
@@ -67,8 +66,9 @@ bool loadSettings();
 bool settingsReady();
 void clearSettings();
 bool forceSetupRequested();
-void runProvisioningPortal();
+void runProvisioningPortal(uint32_t timeoutMs = 0);
 String provisioningPageHtml();
+String scannedWifiOptionsHtml();
 String htmlEscape(const String& text);
 String jsonEscape(const String& text);
 String joinApiUrl(const char* resource);
@@ -81,7 +81,7 @@ bool storeDownloadedFrame(HTTPClient& http);
 bool hasStoredImage();
 bool loadImageData();
 bool drawStoredImage();
-void drawStatusText(const char* line1, const char* line2, const char* line3);
+void drawStatusText(const char* line1, const char* line2, const char* line3, const char* line4 = "");
 void setError(const char* title, const char* detail, const char* hint);
 void sleepForNextCheck(bool fastRetry);
 
@@ -123,9 +123,8 @@ void setup() {
   }
 
   if (!connectWiFi()) {
-    if (!hasStoredImage()) {
-      drawStatusText("Wi-Fi failed", "Cannot connect", "Hold BOOT for setup");
-    }
+    runProvisioningPortal(WIFI_FAILURE_PORTAL_TIMEOUT_MS);
+    drawStatusText("Wi-Fi failed", "Cannot connect", "Hold BOOT for setup");
     display.hibernate();
     sleepForNextCheck(!hasStoredImage());
   }
@@ -144,7 +143,7 @@ void setup() {
   if (result == FRAME_UPDATED) {
     drawStoredImage();
   } else if (result == FRAME_NOT_CLAIMED && !hasStoredImage()) {
-    drawStatusText("Pair this display", settings.claimCode.c_str(), "Open tracker H5");
+    drawStatusText("Device not paired", "Generate H5 code", "Run setup again");
   } else if (result == FRAME_FAILED && !hasStoredImage()) {
     drawStatusText(errorTitle, errorDetail, errorHint);
   } else {
@@ -173,8 +172,7 @@ bool loadSettings() {
   settings.ssid = prefs.getString("ssid", "");
   settings.password = prefs.getString("pass", "");
   settings.apiBaseUrl = prefs.getString("api", DEFAULT_API_BASE_URL);
-  settings.provisioningKey = prefs.getString("prov", "");
-  settings.claimCode = prefs.getString("claim", "");
+  settings.pairingCode = prefs.getString("pair", prefs.getString("claim", ""));
   settings.serial = prefs.getString("serial", defaultSerial());
   settings.deviceToken = prefs.getString("token", "");
   settings.etag = prefs.getString("etag", "");
@@ -189,7 +187,7 @@ bool settingsReady() {
   if (!settings.deviceToken.isEmpty()) {
     return true;
   }
-  return !settings.provisioningKey.isEmpty() && !settings.claimCode.isEmpty();
+  return !settings.pairingCode.isEmpty();
 }
 
 void clearSettings() {
@@ -210,19 +208,20 @@ bool forceSetupRequested() {
   return digitalRead(CONFIG_BUTTON_PIN) == LOW;
 }
 
-void runProvisioningPortal() {
+void runProvisioningPortal(uint32_t timeoutMs) {
   String apName = PROVISIONING_AP_PREFIX + settings.serial.substring(max(0, int(settings.serial.length()) - 6));
   WiFi.disconnect(true);
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(apName.c_str());
   IPAddress portalIp = WiFi.softAPIP();
+  unsigned long startedAt = millis();
 
   Serial.print("Provisioning AP: ");
   Serial.println(apName);
   Serial.print("Portal URL: http://");
   Serial.println(portalIp);
 
-  drawStatusText("Setup required", apName.c_str(), portalIp.toString().c_str());
+  drawStatusText("1 Connect phone Wi-Fi", apName.c_str(), "2 Open 192.168.4.1", "Follow setup page");
   display.hibernate();
 
   dnsServer.start(53, "*", portalIp);
@@ -233,21 +232,22 @@ void runProvisioningPortal() {
     String newSsid = portalServer.arg("ssid");
     String newApi = portalServer.arg("api");
     String newPassword = portalServer.arg("password");
-    String newClaim = portalServer.arg("claim");
-    String newProvisioning = portalServer.arg("provisioning");
+    String newPairing = portalServer.arg("pairing");
     String newToken = portalServer.arg("token");
     newSsid.trim();
     newApi.trim();
-    newClaim.trim();
-    newClaim.toUpperCase();
+    newPairing.trim();
+    newPairing.replace(" ", "");
+    newPairing.replace("-", "");
+    newPairing.toUpperCase();
 
-    bool identityChanged = newApi != settings.apiBaseUrl || newClaim != settings.claimCode;
+    bool identityChanged = newApi != settings.apiBaseUrl || newPairing != settings.pairingCode;
     bool keepsRegisteredToken = !settings.deviceToken.isEmpty() && !identityChanged && newToken.isEmpty();
     bool submitsToken = !newToken.isEmpty();
     if (newSsid.isEmpty() || newApi.isEmpty() ||
-        (!keepsRegisteredToken && !submitsToken && (newClaim.isEmpty() || newProvisioning.isEmpty()))) {
+        (!keepsRegisteredToken && !submitsToken && newPairing.isEmpty())) {
       portalServer.send(400, "text/plain; charset=utf-8",
-        "SSID and server URL are required. Provide a device token, or a binding code and provisioning key.");
+        "SSID and server URL are required. Provide a device token or a pairing code from the H5 device page.");
       return;
     }
 
@@ -257,8 +257,9 @@ void runProvisioningPortal() {
       prefs.putString("pass", newPassword);
     }
     prefs.putString("api", newApi);
-    prefs.putString("claim", newClaim);
-    prefs.putString("prov", newProvisioning);
+    prefs.putString("pair", newPairing);
+    prefs.remove("claim");
+    prefs.remove("prov");
     prefs.putString("serial", settings.serial);
     if (!newToken.isEmpty()) {
       prefs.putString("token", newToken);
@@ -290,6 +291,14 @@ void runProvisioningPortal() {
     if (restartAfterSave && millis() >= restartAt) {
       ESP.restart();
     }
+    if (timeoutMs > 0 && millis() - startedAt >= timeoutMs) {
+      Serial.println("Provisioning portal timed out.");
+      portalServer.stop();
+      dnsServer.stop();
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_OFF);
+      return;
+    }
     delay(5);
   }
 }
@@ -297,11 +306,35 @@ void runProvisioningPortal() {
 String provisioningPageHtml() {
   String page = FPSTR(PROVISIONING_PAGE);
   page.replace("%SSID%", htmlEscape(settings.ssid));
+  page.replace("%SSID_OPTIONS%", scannedWifiOptionsHtml());
   page.replace("%API%", htmlEscape(settings.apiBaseUrl));
-  page.replace("%CLAIM%", htmlEscape(settings.claimCode));
+  page.replace("%PAIRING%", htmlEscape(settings.pairingCode));
   page.replace("%PANEL%", PANEL_PROFILE);
   page.replace("%SERIAL%", htmlEscape(settings.serial));
   return page;
+}
+
+String scannedWifiOptionsHtml() {
+  String options = "<option value=\"\">选择附近 Wi-Fi 或手动输入</option>";
+  int count = WiFi.scanNetworks();
+  if (count <= 0) {
+    return options;
+  }
+  for (int index = 0; index < count; index += 1) {
+    String ssid = WiFi.SSID(index);
+    ssid.trim();
+    if (ssid.isEmpty()) {
+      continue;
+    }
+    String escaped = htmlEscape(ssid);
+    options += "<option value=\"" + escaped + "\"";
+    if (ssid == settings.ssid) {
+      options += " selected";
+    }
+    options += ">" + escaped + " (" + String(WiFi.RSSI(index)) + " dBm)</option>";
+  }
+  WiFi.scanDelete();
+  return options;
 }
 
 String htmlEscape(const String& text) {
@@ -371,11 +404,10 @@ bool registerDevice() {
   }
 
   String payload = "{\"serial\":\"" + jsonEscape(settings.serial) +
-    "\",\"claimCode\":\"" + jsonEscape(settings.claimCode) +
+    "\",\"pairingCode\":\"" + jsonEscape(settings.pairingCode) +
     "\",\"panel\":\"" + String(PANEL_PROFILE) + "\"}";
   http.setTimeout(DOWNLOAD_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Provisioning-Key", settings.provisioningKey);
   int status = http.sendRequest("POST", payload);
   String body = http.getString();
   http.end();
@@ -586,7 +618,7 @@ bool drawStoredImage() {
   return true;
 }
 
-void drawStatusText(const char* line1, const char* line2, const char* line3) {
+void drawStatusText(const char* line1, const char* line2, const char* line3, const char* line4) {
   display.init();
   display.setRotation(1);
   display.setFullWindow();
@@ -605,6 +637,8 @@ void drawStatusText(const char* line1, const char* line2, const char* line3) {
     display.print(line2);
     display.setCursor(30, 312);
     display.print(line3);
+    display.setCursor(30, 370);
+    display.print(line4);
   } while (display.nextPage());
 }
 

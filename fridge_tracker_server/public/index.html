@@ -168,12 +168,14 @@
         </div>
         <div class="device-layout">
           <section class="panel">
-            <h2>绑定新设备</h2>
-            <p class="muted">设备注册完成后，输入屏幕上出现的绑定码。</p>
-            <form id="claimForm" class="claim form">
-              <label>绑定码<input name="claimCode" placeholder="例如 TEST01" required></label>
-              <button class="primary" type="submit">绑定设备</button>
-            </form>
+            <h2>添加新设备</h2>
+            <p class="muted">先生成一次性配对码，再在 ESP32 配网页填写该码。配对成功后设备会自动关联到当前账号。</p>
+            <button id="generatePairingCode" class="primary pairing-action" type="button">生成配对码</button>
+            <div id="pairingCodePanel" class="pairing-code hidden" aria-live="polite">
+              <span>设备配对码</span>
+              <strong id="pairingCodeText"></strong>
+              <small id="pairingCodeExpires"></small>
+            </div>
           </section>
           <section class="panel">
             <div class="section-head"><h2>已关联设备</h2><span class="status-dot">在线状态</span></div>

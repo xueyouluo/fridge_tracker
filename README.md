@@ -29,7 +29,7 @@ cp config.example.json config.json
 
 ## 编译固件
 
-固件首次启动会打开 `XianZhiTie-xxxxxx` 配网热点，服务地址、Wi-Fi 和设备凭证会写入 ESP32 NVS，不需要提交到仓库。
+固件首次启动会打开 `XianZhiTie-xxxxxx` 配网热点，服务地址、Wi-Fi 和 H5 生成的一次性设备配对码会写入 ESP32 NVS，不需要提交到仓库。
 
 ```sh
 '/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli' compile --clean --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,PSRAM=opi' ./esp32_s3_epaper_fridge_tracker_4color
@@ -41,4 +41,4 @@ cp config.example.json config.json
 
 - 选择并添加许可证文件。
 - 确认 `fridge_tracker_server/config.json` 和 `fridge_tracker_server/data/` 未被提交。
-- 将示例密码、设备 token 和 provisioning key 替换为部署环境自己的值。
+- 将示例密码和演示设备 token 替换为部署环境自己的值。

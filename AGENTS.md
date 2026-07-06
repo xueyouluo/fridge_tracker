@@ -35,4 +35,4 @@ npm test       # 运行 test/*.test.js 中的 node:test 测试
 
 ## 安全与配置提示
 
-不要提交 `fridge_tracker_server/config.json`、`fridge_tracker_server/data/`、`.env*`、生成的帧二进制文件或构建产物。需要本地配置时从 `config.example.json` 复制开始；在将服务暴露到 localhost 之外前，务必替换演示密码、设备 token 和 provisioning key。
+不要提交 `fridge_tracker_server/config.json`、`fridge_tracker_server/data/`、`.env*`、生成的帧二进制文件或构建产物。需要本地配置时从 `config.example.json` 复制开始；在将服务暴露到 localhost 之外前，务必替换演示密码和演示设备 token。

@@ -34,6 +34,7 @@ static const uint64_t REFRESH_INTERVAL_US = 30ULL * 60ULL * 1000000ULL;
 static const uint64_t FIRST_SETUP_RETRY_INTERVAL_US = 2ULL * 60ULL * 1000000ULL;
 static const uint32_t WIFI_TIMEOUT_MS = 20000;
 static const uint32_t DOWNLOAD_TIMEOUT_MS = 25000;
+static const uint32_t WIFI_FAILURE_PORTAL_TIMEOUT_MS = 10UL * 60UL * 1000UL;
 static const uint32_t SERIAL_BOOT_DELAY_MS = 1000;
 static const uint32_t SERIAL_SLEEP_DELAY_MS = 250;
 static const uint32_t SERIAL_BAUD_RATE = 115200;

@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
-const state = { user: null, foods: [], devices: [], users: [], canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, foods: [], devices: [], users: [], canManageUsers: false, today: "", editingId: null, view: "overview", pairingCode: null };
 const views = new Set(["overview", "foods", "display", "devices", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
@@ -210,7 +210,7 @@ async function loadDevices() {
   const recent = result.devices.find((device) => device.lastSeenAt) || result.devices[0];
   $("#overviewDevice").innerHTML = recent
     ? `<strong>${escapeHtml(recent.serial)}</strong><span>${recent.lastSeenAt ? `最近同步 ${escapeHtml(formatTime(recent.lastSeenAt))}` : "已绑定，等待首次同步"}</span>`
-    : `<strong>暂无已绑定设备</strong><span>前往设备页面输入绑定码</span>`;
+    : `<strong>暂无已绑定设备</strong><span>前往设备页面生成配对码</span>`;
 }
 
 function renderDevice(device) {
@@ -272,6 +272,13 @@ function formatTime(value) {
 function formatDate(value) {
   if (!value) return "未知";
   return new Date(value).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function renderPairingCode(result) {
+  state.pairingCode = result;
+  $("#pairingCodeText").textContent = result.code;
+  $("#pairingCodeExpires").textContent = `有效期至 ${formatTime(result.expiresAt)}`;
+  $("#pairingCodePanel").classList.remove("hidden");
 }
 
 function refreshPreview() {
@@ -457,14 +464,11 @@ $("#foods").addEventListener("click", async (event) => {
   }
 });
 
-$("#claimForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
+$("#generatePairingCode").addEventListener("click", async () => {
   try {
-    const claimCode = new FormData(event.target).get("claimCode");
-    await api("/api/devices/claim", { method: "POST", body: JSON.stringify({ claimCode }) });
-    event.target.reset();
-    await loadDevices();
-    toast("设备已绑定");
+    const result = await api("/api/devices/pairing-codes", { method: "POST", body: "{}" });
+    renderPairingCode(result);
+    toast("配对码已生成");
   } catch (error) {
     toast(error.message);
   }

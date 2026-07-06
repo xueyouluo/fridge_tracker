@@ -224,7 +224,14 @@ legend { color: var(--muted); font-size: 13px; font-weight: 700; padding: 0 5px;
 .note strong { font-size: 28px; letter-spacing: 0; color: var(--green); }
 .note span { font-size: 13px; color: var(--muted); }
 .device-layout { display: grid; grid-template-columns: 400px 1fr; gap: 18px; align-items: start; }
-.claim { margin-top: 23px; }
+.pairing-action { margin-top: 23px; }
+.pairing-code {
+  display: grid; gap: 6px; margin-top: 16px; padding: 15px;
+  background: #f8faf7; border: 1px solid var(--line); border-radius: 13px;
+}
+.pairing-code span { color: var(--muted); font-size: 12px; font-weight: 720; }
+.pairing-code strong { font-size: 30px; letter-spacing: 0; color: var(--green); }
+.pairing-code small { color: var(--muted); font-size: 12px; }
 .devices { color: var(--muted); font-size: 14px; }
 .device {
   display: flex; flex-direction: column; gap: 6px; padding: 15px; margin-bottom: 10px;
