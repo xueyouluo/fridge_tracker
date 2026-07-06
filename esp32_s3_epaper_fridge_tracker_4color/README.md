@@ -80,9 +80,3 @@ README 中的演示设备 token；实际设备应注册并使用各自独立的 
 | BUSY | GPIO 9 |
 
 屏幕供电与全部信号线均必须使用 `3.3V`。
-
-## 编译
-
-```sh
-'/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli' compile --clean --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,PSRAM=opi' .
-```

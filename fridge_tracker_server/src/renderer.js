@@ -1,9 +1,8 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const fs = require("node:fs");
-const { PNG } = require("pngjs");
 const { chromium } = require("playwright");
+const sharp = require("sharp");
 const {
   DEFAULT_DISPLAY_ORIENTATION,
   DISPLAY_HEIGHT,
@@ -142,32 +141,11 @@ function progressWidth(item) {
   return Math.max(8, Math.round((20 * 7) / item.daysRemaining));
 }
 
-async function launchBrowser(browserPath) {
-  try {
-    return await chromium.launch({ headless: true });
-  } catch (firstError) {
-    const fallbacks = [
-      browserPath,
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/Applications/Chromium.app/Contents/MacOS/Chromium"
-    ].filter(Boolean);
-    for (const executablePath of fallbacks) {
-      if (!fs.existsSync(executablePath)) continue;
-      try {
-        return await chromium.launch({ headless: true, executablePath });
-      } catch {
-        // Continue to the next locally installed browser.
-      }
-    }
-    throw firstError;
-  }
-}
-
-async function renderPng(html, browserPath, orientation) {
+async function renderPng(html, orientation) {
   const isPortrait = displayOrientation(orientation) === "portrait";
   const width = isPortrait ? DISPLAY_HEIGHT : DISPLAY_WIDTH;
   const height = isPortrait ? DISPLAY_WIDTH : DISPLAY_HEIGHT;
-  const browser = await launchBrowser(browserPath);
+  const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width, height, deviceScaleFactor: 1 } });
     await page.setContent(html, { waitUntil: "load" });
@@ -177,14 +155,17 @@ async function renderPng(html, browserPath, orientation) {
   }
 }
 
-function packNativeFourColor(pngBuffer, orientation = "landscape") {
+async function packNativeFourColor(pngBuffer, orientation = "landscape") {
   const normalizedOrientation = displayOrientation(orientation);
   const isPortrait = normalizedOrientation === "portrait";
   const sourceWidth = isPortrait ? DISPLAY_HEIGHT : DISPLAY_WIDTH;
   const sourceHeight = isPortrait ? DISPLAY_WIDTH : DISPLAY_HEIGHT;
-  const png = PNG.sync.read(pngBuffer);
-  if (png.width !== sourceWidth || png.height !== sourceHeight) {
-    throw new Error(`unexpected rendered size: ${png.width}x${png.height}`);
+  const { data, info } = await sharp(pngBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  if (info.width !== sourceWidth || info.height !== sourceHeight) {
+    throw new Error(`unexpected rendered size: ${info.width}x${info.height}`);
   }
   const frame = Buffer.alloc(FRAME_BYTES, 0x55);
   const palette = [
@@ -196,7 +177,7 @@ function packNativeFourColor(pngBuffer, orientation = "landscape") {
   for (let y = 0; y < sourceHeight; y++) {
     for (let x = 0; x < sourceWidth; x++) {
       const offset = (y * sourceWidth + x) * 4;
-      const rgb = [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+      const rgb = [data[offset], data[offset + 1], data[offset + 2]];
       let nearest = palette[0];
       let distance = Number.POSITIVE_INFINITY;
       for (const candidate of palette) {
@@ -220,11 +201,11 @@ function packNativeFourColor(pngBuffer, orientation = "landscape") {
   return frame;
 }
 
-async function renderFrame(items, generatedAt, panel, browserPath, orientation = DEFAULT_DISPLAY_ORIENTATION) {
+async function renderFrame(items, generatedAt, panel, orientation = DEFAULT_DISPLAY_ORIENTATION) {
   const normalizedOrientation = displayOrientation(orientation);
   const html = renderDashboardHtml(items, generatedAt, { panel, orientation: normalizedOrientation });
-  const png = await renderPng(html, browserPath, normalizedOrientation);
-  const frame = packNativeFourColor(png, normalizedOrientation);
+  const png = await renderPng(html, normalizedOrientation);
+  const frame = await packNativeFourColor(png, normalizedOrientation);
   const etag = `"${crypto.createHash("sha256").update(frame).digest("hex")}"`;
   return { etag, frame, html, png };
 }

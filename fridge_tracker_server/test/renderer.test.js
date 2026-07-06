@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { PNG } = require("pngjs");
+const sharp = require("sharp");
 const { FRAME_BYTES } = require("../src/domain");
 const { packNativeFourColor, progressWidth, renderDashboardHtml } = require("../src/renderer");
 
@@ -73,15 +73,15 @@ test("progress bars visibly distinguish the next seven days and decay over longe
   assert.equal(progressWidth({ daysRemaining: 30 }), 8);
 });
 
-test("portrait pixels rotate into native 800x480 coordinates for drawNative", () => {
-  const png = new PNG({ width: 480, height: 800 });
-  png.data.fill(255);
-  png.data[0] = 16;
-  png.data[1] = 16;
-  png.data[2] = 16;
-  png.data[3] = 255;
+test("portrait pixels rotate into native 800x480 coordinates for drawNative", async () => {
+  const pixels = Buffer.alloc(480 * 800 * 4, 255);
+  pixels[0] = 16;
+  pixels[1] = 16;
+  pixels[2] = 16;
+  pixels[3] = 255;
 
-  const frame = packNativeFourColor(PNG.sync.write(png), "portrait");
+  const png = await sharp(pixels, { raw: { width: 480, height: 800, channels: 4 } }).png().toBuffer();
+  const frame = await packNativeFourColor(png, "portrait");
   const nativeTopRightByte = Math.floor(799 / 4);
 
   assert.equal(frame.length, FRAME_BYTES);

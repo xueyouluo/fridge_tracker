@@ -3,7 +3,6 @@
   "port": 8788,
   "timezone": "Asia/Shanghai",
   "databasePath": "data/fridge_v2.sqlite",
-  "browserPath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "secureCookies": false,
   "adminLogin": "admin",
   "adminEmail": "admin@example.com",

@@ -6,7 +6,7 @@
 - 使用 Node.js 内置的 `node:sqlite` 保存本地数据。
 - 按上海时区计算到期状态，并优先展示最紧急的食材。
 - 以 `480x800` 竖屏作为默认展示方向，并向设备提供 `800x480` 四色原生帧接口及 `ETag`。
-- 使用 Playwright 与 `pngjs` 将 HTML 画面转换为帧数据；中文排版在服务端完成，而不是交给 ESP32。
+- 使用 Playwright 与 `sharp` 将 HTML 画面转换为帧数据；中文排版在服务端完成，而不是交给 ESP32。
 
 ## 本地启动
 
@@ -15,6 +15,7 @@
 ```sh
 cd fridge_tracker_server
 npm install
+npm run install:browsers
 npm start
 ```
 
@@ -25,6 +26,8 @@ http://127.0.0.1:8788
 ```
 
 未创建本地 `config.json` 时，服务会自动创建已被 Git 忽略的 SQLite 数据库 `data/fridge_v2.sqlite` 和示例内容，并使用以下演示配置：
+
+`npm run install:browsers` 会下载 Playwright 管理的 Chromium，服务端不需要额外安装系统 Chrome。Linux 服务器如果缺少 Chromium 运行依赖，可改用 `npx playwright install --with-deps chromium`。
 
 ```text
 账号: admin

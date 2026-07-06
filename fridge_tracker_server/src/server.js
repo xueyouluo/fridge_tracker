@@ -33,7 +33,6 @@ const DEFAULT_CONFIG = {
   port: 8788,
   timezone: "Asia/Shanghai",
   databasePath: "data/fridge_v2.sqlite",
-  browserPath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   secureCookies: false,
   adminLogin: "admin",
   adminEmail: "",
@@ -343,7 +342,7 @@ async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_OR
   const snapshot = frameSnapshotKey(foods, today, panel, orientation);
   const key = `${ownerId}:${panel}:${orientation}:${snapshot}`;
   if (frameCache.has(key)) return frameCache.get(key);
-  const result = await renderFrame(foods, displayTimestamp(), panel, config.browserPath, orientation);
+  const result = await renderFrame(foods, displayTimestamp(), panel, orientation);
   if (frameCache.size >= 8) {
     frameCache.clear();
   }
