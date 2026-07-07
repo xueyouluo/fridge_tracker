@@ -1,0 +1,1 @@
+default_fqbn: esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=noota_ffat,CDCOnBoot=cdc

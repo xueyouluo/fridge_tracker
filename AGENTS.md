@@ -2,13 +2,14 @@
 
 ## 项目结构与模块组织
 
-本仓库是“鲜知贴”食材保鲜提醒器项目，分为两部分：
+本仓库是“鲜知贴”食材保鲜提醒器项目，分为服务端和两套固件：
 
 - `fridge_tracker_server/`：Node.js 本地 H5 应用、API、SQLite 数据持久化，以及四色电子墨水屏帧渲染服务。
 - `fridge_tracker_server/src/`：服务入口、领域逻辑、渲染器、用户与账号辅助模块。
 - `fridge_tracker_server/public/`：浏览器端资源，包括 `index.html`、`app.js`、`styles.css` 和 favicon。
 - `fridge_tracker_server/test/`：基于 Node test runner 的领域逻辑、渲染器和用户行为测试。
 - `esp32_s3_epaper_fridge_tracker_4color/`：面向 800x480 黑/白/黄/红四色电子墨水屏的 ESP32-S3 Arduino 固件。
+- `esp32_c3_epaper_fridge_tracker_4color/`：面向同款 800x480 四色屏的 ESP32-C3 Super Mini 实验版 Arduino 固件，优先降低无 PSRAM 平台的运行时内存峰值。
 
 ## 构建、测试与开发命令
 

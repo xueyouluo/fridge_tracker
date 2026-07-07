@@ -1,11 +1,13 @@
 # 鲜知贴
 
-四色电子墨水屏食材保鲜提醒器项目，包含本地服务端和 ESP32-S3 固件。
+四色电子墨水屏食材保鲜提醒器项目，包含本地服务端、ESP32-S3 稳定版固件和
+ESP32-C3 Super Mini 实验版固件。
 
 ## 目录
 
 - `fridge_tracker_server/`：Node.js 本地 H5、API、SQLite 数据和四色屏帧生成服务。
 - `esp32_s3_epaper_fridge_tracker_4color/`：ESP32-S3 N16R8 + `800x480` 黑/白/黄/红四色电子墨水屏固件。
+- `esp32_c3_epaper_fridge_tracker_4color/`：ESP32-C3 Super Mini + 同款 `800x480` 四色屏的高成功率移植版固件。
 
 ## 本地启动服务端
 
@@ -51,9 +53,18 @@ ipconfig getifaddr en0
 '/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli' compile --clean --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,PSRAM=opi' ./esp32_s3_epaper_fridge_tracker_4color
 ```
 
-上传时可在 Arduino IDE 中选择 `ESP32S3 Dev Module` 和实际串口后执行 Upload；使用 CLI 时把串口替换为实际设备端口。
+ESP32-C3 Super Mini 实验版：
 
-更多接口、显示规则和硬件接线见两个子目录内的 README。
+```sh
+'/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli' compile --clean \
+  --fqbn 'esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=noota_ffat,CDCOnBoot=cdc' \
+  ./esp32_c3_epaper_fridge_tracker_4color
+```
+
+上传时按固件目录选择对应开发板：S3 版使用 `ESP32S3 Dev Module`，C3 版使用
+`Nologo ESP32C3 Super Mini`；使用 CLI 时把串口替换为实际设备端口。
+
+更多接口、显示规则和硬件接线见各子目录内的 README。
 
 ## 开源前检查
 
