@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
+#include <esp_sleep.h>
 
 #include <GxEPD2_4C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
@@ -46,6 +47,8 @@ struct DeviceSettings {
   String serial;
   String deviceToken;
   String etag;
+  uint32_t checkIntervalMinutes;
+  bool forceRefreshEveryCheck;
 };
 
 enum FrameResult {
@@ -59,18 +62,25 @@ WebServer portalServer(80);
 DNSServer dnsServer;
 DeviceSettings settings;
 uint8_t imageChunk[DISPLAY_DRAW_CHUNK_BYTES];
-bool restartAfterSave = false;
-unsigned long restartAt = 0;
+bool resumeAfterSave = false;
+bool portalRoutesConfigured = false;
+unsigned long resumeAt = 0;
 char errorTitle[32] = "Refresh failed";
 char errorDetail[52] = "";
-char errorHint[52] = "Hold BOOT for setup";
+char errorHint[52] = "Power cycle for setup";
 
 String defaultSerial();
 bool loadSettings();
 bool settingsReady();
 void clearSettings();
 bool forceSetupRequested();
-void runProvisioningPortal(uint32_t timeoutMs = 0);
+bool wokeFromTimer();
+uint32_t configuredPortalTimeoutMs();
+bool configureWifiRadio();
+bool startProvisioningAccessPoint(const String& apName);
+bool runProvisioningPortal(uint32_t timeoutMs = 0, bool showInstructions = true);
+void stopProvisioningPortal();
+void restartForConfigApply();
 String provisioningPageHtml();
 String scannedWifiOptionsHtml();
 String htmlEscape(const String& text);
@@ -88,13 +98,16 @@ void releaseNetwork();
 void logHeap(const char* label);
 void drawStatusText(const char* line1, const char* line2, const char* line3, const char* line4 = "");
 void setError(const char* title, const char* detail, const char* hint);
-void sleepForNextCheck(bool fastRetry);
+void sleepForNextCheck(bool fastRetry, uint64_t elapsedUs = 0);
 
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   delay(SERIAL_BOOT_DELAY_MS);
   Serial.println();
   Serial.println("=== XianZhi Tie C3 four-color e-paper boot ===");
+  bool timerWakeup = wokeFromTimer();
+  Serial.print("Wake source: ");
+  Serial.println(timerWakeup ? "deep-sleep timer" : "power-on/reset");
 
   pinMode(CONFIG_BUTTON_PIN, INPUT_PULLUP);
   SPI.begin(EPD_SCK, EPD_MISO, EPD_MOSI, EPD_CS);
@@ -110,35 +123,64 @@ void setup() {
   logHeap("Heap after FFat mount");
 
   loadSettings();
+  bool provisioningHandled = false;
   if (forceSetupRequested()) {
     clearSettings();
     loadSettings();
     runProvisioningPortal();
+    provisioningHandled = true;
   }
   if (!settingsReady()) {
     runProvisioningPortal();
+    provisioningHandled = true;
   }
+  bool offerPowerOnPortal = !provisioningHandled && !timerWakeup;
 
   if (!connectWiFi()) {
-    runProvisioningPortal(WIFI_FAILURE_PORTAL_TIMEOUT_MS);
+    bool configSaved = false;
+    uint64_t portalElapsedUs = 0;
+    if (!timerWakeup) {
+      unsigned long portalStartedAt = millis();
+      configSaved = runProvisioningPortal(configuredPortalTimeoutMs());
+      portalElapsedUs = uint64_t(millis() - portalStartedAt) * 1000ULL;
+    }
     releaseNetwork();
-    drawStatusText("Wi-Fi failed", "Cannot connect", "Hold BOOT for setup");
+    if (configSaved) {
+      display.hibernate();
+      restartForConfigApply();
+    }
+    drawStatusText("Wi-Fi failed", "Cannot connect", "Power cycle for setup");
     display.hibernate();
-    sleepForNextCheck(!hasStoredImage());
+    sleepForNextCheck(!hasStoredImage(), portalElapsedUs);
   }
 
   if (settings.deviceToken.isEmpty() && !registerDevice()) {
     releaseNetwork();
-    if (!hasStoredImage()) {
+    bool storedImageAvailable = hasStoredImage();
+    uint64_t portalElapsedUs = 0;
+    if (offerPowerOnPortal) {
+      unsigned long portalStartedAt = millis();
+      bool configSaved = runProvisioningPortal(configuredPortalTimeoutMs(), !storedImageAvailable);
+      portalElapsedUs = uint64_t(millis() - portalStartedAt) * 1000ULL;
+      if (configSaved) {
+        restartForConfigApply();
+      }
+    }
+    if (!storedImageAvailable) {
       drawStatusText(errorTitle, errorDetail, errorHint);
     }
     display.hibernate();
-    sleepForNextCheck(true);
+    sleepForNextCheck(true, portalElapsedUs);
   }
 
   FrameResult result = fetchNativeFrame();
   releaseNetwork();
   if (result == FRAME_UPDATED) {
+    if (!drawStoredImage()) {
+      drawStatusText(errorTitle, errorDetail, errorHint);
+    }
+  } else if (result == FRAME_UNCHANGED && settings.forceRefreshEveryCheck) {
+    Serial.println("Debug refresh enabled; redrawing the cached frame after HTTP 304.");
     if (!drawStoredImage()) {
       drawStatusText(errorTitle, errorDetail, errorHint);
     }
@@ -149,7 +191,18 @@ void setup() {
   }
 
   display.hibernate();
-  sleepForNextCheck(false);
+  uint64_t portalElapsedUs = 0;
+  if (offerPowerOnPortal) {
+    uint32_t portalTimeoutMs = configuredPortalTimeoutMs();
+    Serial.print("Opening the post-refresh configuration window for seconds: ");
+    Serial.println(portalTimeoutMs / 1000UL);
+    unsigned long portalStartedAt = millis();
+    if (runProvisioningPortal(portalTimeoutMs, false)) {
+      restartForConfigApply();
+    }
+    portalElapsedUs = uint64_t(millis() - portalStartedAt) * 1000ULL;
+  }
+  sleepForNextCheck(false, portalElapsedUs);
 }
 
 void loop() {
@@ -172,7 +225,13 @@ bool loadSettings() {
   settings.serial = prefs.getString("serial", defaultSerial());
   settings.deviceToken = prefs.getString("token", "");
   settings.etag = prefs.getString("etag", "");
+  settings.checkIntervalMinutes = prefs.getUInt("interval", DEFAULT_CHECK_INTERVAL_MINUTES);
+  settings.forceRefreshEveryCheck = prefs.getBool("force", false);
   prefs.end();
+  if (settings.checkIntervalMinutes < MIN_CHECK_INTERVAL_MINUTES ||
+      settings.checkIntervalMinutes > MAX_CHECK_INTERVAL_MINUTES) {
+    settings.checkIntervalMinutes = DEFAULT_CHECK_INTERVAL_MINUTES;
+  }
   return settingsReady();
 }
 
@@ -204,98 +263,187 @@ bool forceSetupRequested() {
   return digitalRead(CONFIG_BUTTON_PIN) == LOW;
 }
 
-void runProvisioningPortal(uint32_t timeoutMs) {
+bool wokeFromTimer() {
+  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
+}
+
+uint32_t configuredPortalTimeoutMs() {
+  uint32_t checkIntervalMs = settings.checkIntervalMinutes * 60UL * 1000UL;
+  return checkIntervalMs < MAX_POWER_ON_PORTAL_TIMEOUT_MS
+    ? checkIntervalMs
+    : MAX_POWER_ON_PORTAL_TIMEOUT_MS;
+}
+
+bool configureWifiRadio() {
+  WiFi.setSleep(false);
+  bool powerSet = WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  Serial.print("Wi-Fi reduced TX power: ");
+  Serial.println(powerSet ? "set" : "failed");
+  return powerSet;
+}
+
+bool startProvisioningAccessPoint(const String& apName) {
+  for (uint8_t attempt = 1; attempt <= 2; attempt += 1) {
+    WiFi.disconnect(true, false);
+    delay(WIFI_MODE_TRANSITION_DELAY_MS);
+
+    // AP+STA keeps the setup hotspot online while the portal scans nearby SSIDs.
+    bool modeReady = WiFi.mode(WIFI_AP_STA);
+    bool powerSet = configureWifiRadio();
+    delay(WIFI_MODE_TRANSITION_DELAY_MS);
+
+    bool apStarted = modeReady &&
+      WiFi.softAP(apName.c_str(), nullptr, PROVISIONING_AP_CHANNEL,
+                  false, PROVISIONING_AP_MAX_CLIENTS);
+    Serial.print("Provisioning AP attempt ");
+    Serial.print(attempt);
+    Serial.print(": mode=");
+    Serial.print(modeReady ? "ready" : "failed");
+    Serial.print(", power=");
+    Serial.print(powerSet ? "set" : "failed");
+    Serial.print(", AP=");
+    Serial.println(apStarted ? "started" : "failed");
+    if (apStarted) {
+      return true;
+    }
+
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(WIFI_AP_RETRY_DELAY_MS);
+  }
+  return false;
+}
+
+bool runProvisioningPortal(uint32_t timeoutMs, bool showInstructions) {
   String apName = PROVISIONING_AP_PREFIX + settings.serial.substring(max(0, int(settings.serial.length()) - 6));
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(apName.c_str());
+  resumeAfterSave = false;
+
+  if (showInstructions) {
+    drawStatusText("1 Connect phone Wi-Fi", apName.c_str(), "2 Open 192.168.4.1", "Follow setup page");
+  }
+  display.hibernate();
+
+  if (!startProvisioningAccessPoint(apName)) {
+    Serial.println("Provisioning AP failed after 2 attempts.");
+    if (timeoutMs == 0) {
+      drawStatusText("Wi-Fi AP failed", "Power cycle device", "Check serial log");
+      display.hibernate();
+      sleepForNextCheck(true);
+    }
+    return false;
+  }
+
   IPAddress portalIp = WiFi.softAPIP();
   unsigned long startedAt = millis();
-
   Serial.print("Provisioning AP: ");
   Serial.println(apName);
   Serial.print("Portal URL: http://");
   Serial.println(portalIp);
 
-  drawStatusText("1 Connect phone Wi-Fi", apName.c_str(), "2 Open 192.168.4.1", "Follow setup page");
-  display.hibernate();
-
   dnsServer.start(53, "*", portalIp);
-  portalServer.on("/", HTTP_GET, []() {
-    portalServer.send(200, "text/html; charset=utf-8", provisioningPageHtml());
-  });
-  portalServer.on("/save", HTTP_POST, []() {
-    String newSsid = portalServer.arg("ssid");
-    String newApi = portalServer.arg("api");
-    String newPassword = portalServer.arg("password");
-    String newPairing = portalServer.arg("pairing");
-    String newToken = portalServer.arg("token");
-    newSsid.trim();
-    newApi.trim();
-    newPairing.trim();
-    newPairing.replace(" ", "");
-    newPairing.replace("-", "");
-    newPairing.toUpperCase();
+  if (!portalRoutesConfigured) {
+    portalServer.on("/", HTTP_GET, []() {
+      portalServer.send(200, "text/html; charset=utf-8", provisioningPageHtml());
+    });
+    portalServer.on("/save", HTTP_POST, []() {
+      String newSsid = portalServer.arg("ssid");
+      String newApi = portalServer.arg("api");
+      String newPassword = portalServer.arg("password");
+      String newPairing = portalServer.arg("pairing");
+      String newToken = portalServer.arg("token");
+      uint32_t newIntervalMinutes = portalServer.arg("interval").toInt();
+      bool newForceRefreshEveryCheck = portalServer.hasArg("force_refresh");
+      newSsid.trim();
+      newApi.trim();
+      newPairing.trim();
+      newPairing.replace(" ", "");
+      newPairing.replace("-", "");
+      newPairing.toUpperCase();
 
-    bool identityChanged = newApi != settings.apiBaseUrl || newPairing != settings.pairingCode;
-    bool keepsRegisteredToken = !settings.deviceToken.isEmpty() && !identityChanged && newToken.isEmpty();
-    bool submitsToken = !newToken.isEmpty();
-    if (newSsid.isEmpty() || newApi.isEmpty() ||
-        (!keepsRegisteredToken && !submitsToken && newPairing.isEmpty())) {
-      portalServer.send(400, "text/plain; charset=utf-8",
-        "SSID and server URL are required. Provide a device token or a pairing code from the H5 device page.");
-      return;
-    }
+      bool identityChanged = newApi != settings.apiBaseUrl || newPairing != settings.pairingCode;
+      bool keepsRegisteredToken = !settings.deviceToken.isEmpty() && !identityChanged && newToken.isEmpty();
+      bool submitsToken = !newToken.isEmpty();
+      if (newSsid.isEmpty() || newApi.isEmpty() ||
+          (!keepsRegisteredToken && !submitsToken && newPairing.isEmpty())) {
+        portalServer.send(400, "text/plain; charset=utf-8",
+          "SSID and server URL are required. Provide a device token or a pairing code from the H5 device page.");
+        return;
+      }
+      if (newIntervalMinutes < MIN_CHECK_INTERVAL_MINUTES ||
+          newIntervalMinutes > MAX_CHECK_INTERVAL_MINUTES) {
+        portalServer.send(400, "text/plain; charset=utf-8",
+          "Check interval must be between 5 and 1440 minutes.");
+        return;
+      }
 
-    prefs.begin("fridge", false);
-    prefs.putString("ssid", newSsid);
-    if (!newPassword.isEmpty()) {
-      prefs.putString("pass", newPassword);
-    }
-    prefs.putString("api", newApi);
-    prefs.putString("pair", newPairing);
-    prefs.remove("prov");
-    prefs.putString("serial", settings.serial);
-    if (!newToken.isEmpty()) {
-      prefs.putString("token", newToken);
-      prefs.remove("etag");
-    } else if (identityChanged) {
-      prefs.remove("token");
-      prefs.remove("etag");
-    }
-    prefs.end();
-    if (submitsToken || identityChanged) {
-      FFat.remove(IMAGE_PATH);
-      FFat.remove(TEMP_IMAGE_PATH);
-      FFat.remove(BACKUP_IMAGE_PATH);
-    }
+      prefs.begin("fridge", false);
+      prefs.putString("ssid", newSsid);
+      if (!newPassword.isEmpty()) {
+        prefs.putString("pass", newPassword);
+      }
+      prefs.putString("api", newApi);
+      prefs.putString("pair", newPairing);
+      prefs.putUInt("interval", newIntervalMinutes);
+      prefs.putBool("force", newForceRefreshEveryCheck);
+      prefs.remove("prov");
+      prefs.putString("serial", settings.serial);
+      if (!newToken.isEmpty()) {
+        prefs.putString("token", newToken);
+        prefs.remove("etag");
+      } else if (identityChanged) {
+        prefs.remove("token");
+        prefs.remove("etag");
+      }
+      prefs.end();
+      if (submitsToken || identityChanged) {
+        FFat.remove(IMAGE_PATH);
+        FFat.remove(TEMP_IMAGE_PATH);
+        FFat.remove(BACKUP_IMAGE_PATH);
+      }
 
-    portalServer.send_P(200, "text/html; charset=utf-8", PROVISIONING_SAVED_PAGE);
-    restartAfterSave = true;
-    restartAt = millis() + 1000;
-  });
-  portalServer.onNotFound([]() {
-    portalServer.sendHeader("Location", "/", true);
-    portalServer.send(302, "text/plain", "");
-  });
+      portalServer.send_P(200, "text/html; charset=utf-8", PROVISIONING_SAVED_PAGE);
+      resumeAfterSave = true;
+      resumeAt = millis() + 1000;
+    });
+    portalServer.onNotFound([]() {
+      portalServer.sendHeader("Location", "/", true);
+      portalServer.send(302, "text/plain", "");
+    });
+    portalRoutesConfigured = true;
+  }
   portalServer.begin();
 
   while (true) {
     dnsServer.processNextRequest();
     portalServer.handleClient();
-    if (restartAfterSave && millis() >= restartAt) {
-      ESP.restart();
+    if (resumeAfterSave && millis() >= resumeAt) {
+      stopProvisioningPortal();
+      loadSettings();
+      Serial.println("Provisioning saved; continuing with the new settings.");
+      return true;
     }
     if (timeoutMs > 0 && millis() - startedAt >= timeoutMs) {
       Serial.println("Provisioning portal timed out.");
-      portalServer.stop();
-      dnsServer.stop();
-      WiFi.softAPdisconnect(true);
-      WiFi.mode(WIFI_OFF);
-      return;
+      stopProvisioningPortal();
+      return false;
     }
     delay(5);
   }
+}
+
+void stopProvisioningPortal() {
+  portalServer.stop();
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
+void restartForConfigApply() {
+  Serial.println("Restarting in 1 second to apply the saved configuration.");
+  Serial.flush();
+  delay(SERIAL_SLEEP_DELAY_MS);
+  esp_sleep_enable_timer_wakeup(CONFIG_APPLY_RESTART_DELAY_US);
+  esp_deep_sleep_start();
 }
 
 String provisioningPageHtml() {
@@ -304,6 +452,8 @@ String provisioningPageHtml() {
   page.replace("%SSID_OPTIONS%", scannedWifiOptionsHtml());
   page.replace("%API%", htmlEscape(settings.apiBaseUrl));
   page.replace("%PAIRING%", htmlEscape(settings.pairingCode));
+  page.replace("%INTERVAL%", String(settings.checkIntervalMinutes));
+  page.replace("%FORCE_REFRESH_CHECKED%", settings.forceRefreshEveryCheck ? " checked" : "");
   page.replace("%PANEL%", PANEL_PROFILE);
   page.replace("%SERIAL%", htmlEscape(settings.serial));
   return page;
@@ -361,9 +511,21 @@ String joinApiUrl(const char* resource) {
 
 bool connectWiFi() {
   logHeap("Heap before Wi-Fi");
-  WiFi.mode(WIFI_STA);
+  bool modeReady = WiFi.mode(WIFI_STA);
+  delay(WIFI_MODE_TRANSITION_DELAY_MS);
+  bool powerSet = configureWifiRadio();
+  Serial.print("Wi-Fi station mode: ");
+  Serial.print(modeReady ? "ready" : "failed");
+  Serial.print(", power: ");
+  Serial.println(powerSet ? "set" : "failed");
+  if (!modeReady) {
+    setError("Wi-Fi failed", "Cannot start radio", "Power cycle for setup");
+    return false;
+  }
   WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
-  Serial.print("Connecting Wi-Fi");
+  Serial.print("Connecting Wi-Fi: ");
+  Serial.print(settings.ssid);
+  Serial.print(" ");
   unsigned long startedAt = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startedAt < WIFI_TIMEOUT_MS) {
     delay(400);
@@ -371,7 +533,7 @@ bool connectWiFi() {
   }
   Serial.println();
   if (WiFi.status() != WL_CONNECTED) {
-    setError("Wi-Fi failed", "Cannot connect", "Hold BOOT for setup");
+    setError("Wi-Fi failed", "Cannot connect", "Power cycle for setup");
     return false;
   }
   Serial.print("Wi-Fi IP: ");
@@ -677,8 +839,20 @@ void setError(const char* title, const char* detail, const char* hint) {
   Serial.println(detail);
 }
 
-void sleepForNextCheck(bool fastRetry) {
-  uint64_t interval = fastRetry ? FIRST_SETUP_RETRY_INTERVAL_US : REFRESH_INTERVAL_US;
+void sleepForNextCheck(bool fastRetry, uint64_t elapsedUs) {
+  uint64_t targetInterval = fastRetry
+    ? FIRST_SETUP_RETRY_INTERVAL_US
+    : uint64_t(settings.checkIntervalMinutes) * 60ULL * 1000000ULL;
+  uint64_t interval = targetInterval > elapsedUs
+    ? targetInterval - elapsedUs
+    : CONFIG_APPLY_RESTART_DELAY_US;
+  if (interval < CONFIG_APPLY_RESTART_DELAY_US) {
+    interval = CONFIG_APPLY_RESTART_DELAY_US;
+  }
+  if (elapsedUs > 0) {
+    Serial.print("Elapsed configuration window seconds: ");
+    Serial.println(elapsedUs / 1000000ULL);
+  }
   Serial.print("Sleeping for seconds: ");
   Serial.println(interval / 1000000ULL);
   Serial.flush();

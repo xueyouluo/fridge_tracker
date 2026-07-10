@@ -17,6 +17,8 @@ static const char* PANEL_PROFILE = "gdem075f52";
 static const char* DEVICE_NAME = "XianZhi Tie C3";
 static const char* PROVISIONING_AP_PREFIX = "XianZhiTie-";
 static const char* DEFAULT_API_BASE_URL = "http://192.168.0.2:8788";
+static const uint8_t PROVISIONING_AP_CHANNEL = 1;
+static const uint8_t PROVISIONING_AP_MAX_CLIENTS = 4;
 
 // Hold the BOOT button while resetting to clear setup data and reopen the portal.
 static const int CONFIG_BUTTON_PIN = 0;
@@ -35,11 +37,16 @@ static const char* IMAGE_PATH = "/fridge4c.bin";
 static const char* TEMP_IMAGE_PATH = "/fridge4c.tmp";
 static const char* BACKUP_IMAGE_PATH = "/fridge4c.bak";
 
-static const uint64_t REFRESH_INTERVAL_US = 30ULL * 60ULL * 1000000ULL;
+static const uint32_t DEFAULT_CHECK_INTERVAL_MINUTES = 30;
+static const uint32_t MIN_CHECK_INTERVAL_MINUTES = 5;
+static const uint32_t MAX_CHECK_INTERVAL_MINUTES = 24UL * 60UL;
 static const uint64_t FIRST_SETUP_RETRY_INTERVAL_US = 2ULL * 60ULL * 1000000ULL;
 static const uint32_t WIFI_TIMEOUT_MS = 20000;
+static const uint32_t WIFI_MODE_TRANSITION_DELAY_MS = 100;
+static const uint32_t WIFI_AP_RETRY_DELAY_MS = 250;
 static const uint32_t DOWNLOAD_TIMEOUT_MS = 25000;
-static const uint32_t WIFI_FAILURE_PORTAL_TIMEOUT_MS = 10UL * 60UL * 1000UL;
+static const uint32_t MAX_POWER_ON_PORTAL_TIMEOUT_MS = 10UL * 60UL * 1000UL;
+static const uint64_t CONFIG_APPLY_RESTART_DELAY_US = 1ULL * 1000000ULL;
 static const uint32_t SERIAL_BOOT_DELAY_MS = 2500;
 static const uint32_t SERIAL_SLEEP_DELAY_MS = 750;
 static const uint32_t SERIAL_BAUD_RATE = 115200;
