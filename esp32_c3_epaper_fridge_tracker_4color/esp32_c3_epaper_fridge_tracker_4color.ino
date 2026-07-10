@@ -16,6 +16,8 @@
 #include "ProvisioningPage.h"
 
 // Pin labels follow the photographed ESP32-C3 Super Mini board silkscreen.
+// Avoid GPIO20/GPIO21; on some Super Mini boards wires near the antenna can
+// make the provisioning AP difficult to discover.
 #define EPD_CS    7
 #define EPD_DC    3
 #define EPD_RST   5

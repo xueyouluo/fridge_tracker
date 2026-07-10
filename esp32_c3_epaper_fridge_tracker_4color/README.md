@@ -126,6 +126,8 @@ ipconfig getifaddr en0
 - 墨水屏驱动板上的 `SDA` 是 SPI `MOSI`，不是 I2C `SDA`。
 - 本项目不接 `MISO`。
 - 这套接线避开了 `GPIO8`、`GPIO9`、`GPIO20`、`GPIO21`。
+- 不建议把屏幕线改接到 `GPIO20/GPIO21`：NIMO 项目实测/记录过，部分
+  `ESP32-C3 Super Mini` 板子在天线附近接线后，配网热点可能很难被手机搜到。
 - 只接 `3V3`，不要把屏幕供电接到 `5V`。
 
 ## 串口判断
