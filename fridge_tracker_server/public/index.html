@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>鲜知贴</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/styles.css">
@@ -14,11 +14,26 @@
       <span><strong>鲜知贴</strong><small>冰箱鲜度工作台</small></span>
     </a>
     <nav id="mainNav" class="nav hidden" aria-label="主导航">
-      <button type="button" class="active" data-view-target="overview">概览</button>
-      <button type="button" data-view-target="foods">食材</button>
-      <button type="button" data-view-target="display">墨水屏</button>
-      <button type="button" data-view-target="devices">设备</button>
-      <button type="button" data-view-target="users">用户</button>
+      <button type="button" class="active" data-view-target="overview" aria-current="page">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
+        <span>概览</span>
+      </button>
+      <button type="button" data-view-target="foods">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c4.4 0 8-3.6 8-8 0-3.9-2.8-7.2-6.6-7.9L12 2 10.6 5.1C6.8 5.8 4 9.1 4 13c0 4.4 3.6 8 8 8Zm-2.5-9.5c1.5 0 2.5 1 2.5 2.5 0-1.5 1-2.5 2.5-2.5-1.5 0-2.5-1-2.5-2.5 0 1.5-1 2.5-2.5 2.5Z"/></svg>
+        <span>食材</span>
+      </button>
+      <button type="button" data-view-target="display">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4V5Zm2 2v8h12V7H6Zm3 12h6v2H9v-2Z"/></svg>
+        <span>墨水屏</span>
+      </button>
+      <button type="button" data-view-target="devices">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 3v10h10V6H7Zm4 12v1h2v-1h-2Z"/></svg>
+        <span>设备</span>
+      </button>
+      <button type="button" data-view-target="users">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0H5Z"/></svg>
+        <span>用户</span>
+      </button>
     </nav>
     <div id="sessionActions" class="session hidden">
       <span id="accountName"></span>
@@ -78,7 +93,7 @@
               <div><p class="eyebrow">电子纸同步</p><h2>墨水屏</h2></div>
               <button class="link" type="button" data-view-target="display">查看画面</button>
             </div>
-            <p class="screen-copy">竖屏显示最需处理的 9 项，更新后设备按定时周期拉取新画面。</p>
+            <p class="screen-copy">显示最需处理的 9 项，设备按设定周期获取最新画面。</p>
             <div id="overviewDevice" class="sync-state"></div>
           </article>
         </div>
@@ -87,36 +102,12 @@
       <section class="view" data-view-panel="foods" aria-label="食材管理">
         <div class="page-title">
           <div><p class="eyebrow">食材管理</p><h1>维护冰箱内容</h1></div>
-          <span id="foodCount" class="pill"></span>
+          <div class="page-title-actions">
+            <span id="foodCount" class="pill"></span>
+            <button class="primary add-food-action" type="button" data-new-food>添加食材</button>
+          </div>
         </div>
-        <div class="food-layout">
-          <section class="panel entry">
-            <div class="section-head"><h2 id="formTitle">添加食材</h2><button id="cancelEdit" class="link hidden" type="button">取消编辑</button></div>
-            <form id="foodForm" class="form">
-              <input type="hidden" name="id">
-              <div class="form-grid">
-                <label>食材名称<input name="name" maxlength="40" placeholder="例如：牛奶" required></label>
-                <label>分类
-                  <select name="category">
-                    <option>水果</option><option>蔬菜</option><option>肉类</option><option>海鲜</option>
-                    <option>乳品</option><option>蛋类</option><option>饮料</option><option>豆制品</option>
-                    <option>熟食</option><option>调味品</option><option>冷冻</option><option>甜点</option><option>其他</option>
-                  </select>
-                </label>
-              </div>
-              <label>数量说明<input name="quantityText" maxlength="30" placeholder="例如：1 瓶 / 200g"></label>
-              <fieldset>
-                <legend>到期日期</legend>
-                <label>直接填写到期日<input name="expiresOn" type="date"></label>
-                <div class="or">或按保鲜天数计算</div>
-                <div class="form-grid">
-                  <label>购买/生产日<input name="startDate" type="date"></label>
-                  <label>保鲜天数<input name="shelfLifeDays" type="number" min="0" max="3650" placeholder="7"></label>
-                </div>
-              </fieldset>
-              <button id="saveFood" class="primary" type="submit">保存食材</button>
-            </form>
-          </section>
+        <div class="food-layout food-list-layout">
           <section class="panel collection">
             <div class="section-head"><h2>全部记录</h2><span class="muted">按紧急程度排序</span></div>
             <div class="table-frame">
@@ -201,6 +192,115 @@
         </div>
       </section>
     </section>
+    <div id="foodEditorOverlay" class="food-editor-overlay hidden" aria-hidden="true">
+      <section class="food-editor" role="dialog" aria-modal="true" aria-labelledby="foodEditorTitle" aria-describedby="foodEditorHint">
+        <header class="food-editor-header">
+          <div>
+            <p class="eyebrow">冰箱记录</p>
+            <h2 id="foodEditorTitle">添加食材</h2>
+            <p id="foodEditorHint">填写食材名称、分类和到期信息即可。</p>
+          </div>
+          <button id="foodEditorClose" class="icon-button" type="button" aria-label="关闭食材编辑器">×</button>
+        </header>
+        <form id="foodForm" class="food-editor-form" novalidate>
+          <div class="food-editor-body">
+            <input type="hidden" name="id">
+            <p class="required-hint"><span aria-hidden="true">*</span> 为必填项</p>
+
+            <div class="food-basic-grid">
+              <label class="field-group" for="foodName">
+                <span class="field-label">食材名称 <span class="required-mark" aria-hidden="true">*</span></span>
+                <input id="foodName" name="name" maxlength="40" autocomplete="off" placeholder="例如：牛奶" required>
+                <span class="field-error" data-error-for="name"></span>
+              </label>
+
+              <div class="field-group">
+                <span class="field-label">分类 <span class="required-mark" aria-hidden="true">*</span></span>
+                <input id="foodCategory" name="category" type="hidden">
+                <button id="categoryTrigger" class="select-control" type="button" aria-expanded="false" aria-controls="categoryPicker">
+                  <span id="selectedCategoryIcon" class="select-control-icon" aria-hidden="true">＋</span>
+                  <span id="selectedCategoryText">请选择分类</span>
+                  <span class="select-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div id="categoryPicker" class="category-picker hidden" role="listbox" aria-label="食材分类"></div>
+                <span class="field-error" data-error-for="category"></span>
+              </div>
+            </div>
+
+            <label class="field-group" for="foodQuantity">
+              <span class="field-label">数量说明 <span class="optional-mark">选填</span></span>
+              <input id="foodQuantity" name="quantityText" maxlength="30" autocomplete="off" placeholder="例如：1 瓶 / 200g">
+            </label>
+
+            <fieldset class="expiry-fieldset">
+              <legend>到期方式 <span class="required-mark" aria-hidden="true">*</span></legend>
+              <div class="expiry-mode-switch" role="tablist" aria-label="到期方式">
+                <button id="expiryDirectTab" class="active" type="button" role="tab" aria-selected="true" aria-controls="expiryDirectPanel" data-expiry-mode="direct">直接选择日期</button>
+                <button id="expiryCalculatedTab" type="button" role="tab" aria-selected="false" aria-controls="expiryCalculatedPanel" data-expiry-mode="calculated">按保鲜天数</button>
+              </div>
+
+              <section id="expiryDirectPanel" class="expiry-panel" role="tabpanel" aria-labelledby="expiryDirectTab" data-expiry-panel="direct">
+                <span class="field-label">到期日期 <span class="required-mark" aria-hidden="true">*</span></span>
+                <div class="date-presets" aria-label="快捷到期日期">
+                  <button type="button" data-date-offset="0">今天</button>
+                  <button type="button" data-date-offset="1">明天</button>
+                  <button type="button" data-date-offset="3">3 天后</button>
+                  <button type="button" data-date-offset="7">7 天后</button>
+                </div>
+                <input name="expiresOn" type="hidden">
+                <button class="date-control" type="button" data-date-target="expiresOn" aria-expanded="false" aria-controls="foodCalendar">
+                  <span aria-hidden="true">▣</span>
+                  <span data-date-label="expiresOn">选择其他日期</span>
+                  <span aria-hidden="true">›</span>
+                </button>
+                <span class="field-error" data-error-for="expiresOn"></span>
+              </section>
+
+              <section id="expiryCalculatedPanel" class="expiry-panel hidden" role="tabpanel" aria-labelledby="expiryCalculatedTab" data-expiry-panel="calculated">
+                <div class="calculated-grid">
+                  <div class="field-group">
+                    <span class="field-label">购买/生产日期 <span class="required-mark" aria-hidden="true">*</span></span>
+                    <input name="startDate" type="hidden">
+                    <button class="date-control" type="button" data-date-target="startDate" aria-expanded="false" aria-controls="foodCalendar">
+                      <span aria-hidden="true">▣</span>
+                      <span data-date-label="startDate">选择日期</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                    <span class="field-error" data-error-for="startDate"></span>
+                  </div>
+                  <label class="field-group" for="foodShelfLife">
+                    <span class="field-label">保鲜天数 <span class="required-mark" aria-hidden="true">*</span></span>
+                    <input id="foodShelfLife" name="shelfLifeDays" type="number" inputmode="numeric" min="0" max="3650" placeholder="例如：7">
+                    <span class="field-error" data-error-for="shelfLifeDays"></span>
+                  </label>
+                </div>
+                <div class="shelf-life-presets" aria-label="快捷保鲜天数">
+                  <button type="button" data-shelf-life="3">3 天</button>
+                  <button type="button" data-shelf-life="7">7 天</button>
+                  <button type="button" data-shelf-life="14">14 天</button>
+                  <button type="button" data-shelf-life="30">30 天</button>
+                </div>
+                <p id="calculatedExpiry" class="calculated-expiry">填写日期和保鲜天数后显示预计到期日</p>
+              </section>
+
+              <div id="foodCalendar" class="calendar-panel hidden" aria-label="日期选择器">
+                <div class="calendar-head">
+                  <button id="calendarPrevious" type="button" aria-label="上个月">‹</button>
+                  <strong id="calendarMonth"></strong>
+                  <button id="calendarNext" type="button" aria-label="下个月">›</button>
+                </div>
+                <div class="calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+                <div id="calendarGrid" class="calendar-grid"></div>
+              </div>
+            </fieldset>
+          </div>
+          <footer class="food-editor-actions">
+            <button id="foodEditorCancel" class="dialog-cancel" type="button">取消</button>
+            <button id="saveFood" class="primary" type="submit">添加食材</button>
+          </footer>
+        </form>
+      </section>
+    </div>
     <div id="dialogOverlay" class="dialog-overlay hidden" aria-hidden="true">
       <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody">
         <p id="dialogEyebrow" class="dialog-eyebrow">需要确认</p>
