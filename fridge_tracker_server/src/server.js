@@ -9,14 +9,16 @@ const {
   FRAME_BYTES,
   DEFAULT_DISPLAY_ORIENTATION,
   addDays,
-  decorateFood,
   displayOrientation,
   frameSnapshotKey,
   localDateKey,
-  normalizeFoodInput,
-  panelProfile,
-  sortFoods
+  panelProfile
 } = require("./domain");
+const { createFoodService } = require("./foods");
+const { createAccessTokenService } = require("./accessTokens");
+const { createAiSettingsService } = require("./aiSettings");
+const { createAgentService } = require("./agent");
+const { createMcpHandler } = require("./mcp");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
 const {
   displayNameFromEmail,
@@ -43,7 +45,8 @@ const DEFAULT_CONFIG = {
   adminLogin: "admin",
   adminEmail: "",
   adminPassword: "fridge-demo",
-  demoDeviceToken: "local-fridge-device-token"
+  demoDeviceToken: "local-fridge-device-token",
+  credentialEncryptionKey: ""
 };
 
 const config = loadConfig();
@@ -54,6 +57,16 @@ const frameCache = new Map();
 
 initializeDatabase();
 seedLocalDemo();
+const foodService = createFoodService({ db, timezone: config.timezone, onChange: invalidateFrames });
+const accessTokenService = createAccessTokenService(db);
+const aiSettingsService = createAiSettingsService(db, config.credentialEncryptionKey || config.adminPassword);
+const agentService = createAgentService({
+  db,
+  foodService,
+  timezone: config.timezone,
+  resolveRuntime: aiSettingsService.resolveRuntime
+});
+const handleMcp = createMcpHandler({ foodService, authenticate: accessTokenService.authenticate });
 
 function loadConfig() {
   let custom = {};
@@ -118,6 +131,54 @@ function initializeDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      token_prefix TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_used_at TEXT,
+      revoked_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_conversations (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS user_ai_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      api_key_encrypted TEXT NOT NULL,
+      api_key_hint TEXT NOT NULL,
+      model TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      metadata_json TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_pending_actions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      actions_json TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      resolved_at TEXT,
+      resolution TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS agent_conversations_user_idx ON agent_conversations(user_id, updated_at);
+    CREATE INDEX IF NOT EXISTS agent_messages_conversation_idx ON agent_messages(conversation_id, id);
   `);
   migrateUsersTable();
   migrateDevicesTable();
@@ -308,9 +369,7 @@ function requireDevice(req, res) {
 }
 
 function allFoods(ownerId) {
-  const today = localDateKey(config.timezone);
-  const rows = db.prepare("SELECT * FROM food_items WHERE owner_id = ?").all(ownerId);
-  return sortFoods(rows.map((row) => decorateFood(row, today)));
+  return foodService.listFoodItems(ownerId);
 }
 
 function findUserByIdentity(identity) {
@@ -488,7 +547,7 @@ function sendPairingCodeError(res, result) {
 
 async function routeApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
-    sendJson(res, 200, { ok: true, timezone: config.timezone, frameBytes: FRAME_BYTES });
+    sendJson(res, 200, { ok: true, timezone: config.timezone, frameBytes: FRAME_BYTES, agentMode: "per-user" });
     return true;
   }
 
@@ -615,53 +674,81 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/foods") {
-    const item = normalizeFoodInput(await readJson(req));
-    const now = new Date().toISOString();
-    const created = db.prepare(`
-      INSERT INTO food_items
-        (owner_id, name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(user.id, item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
-    invalidateFrames();
-    const row = db.prepare("SELECT * FROM food_items WHERE id = ?").get(Number(created.lastInsertRowid));
-    sendJson(res, 201, decorateFood(row, localDateKey(config.timezone)));
+    sendJson(res, 201, foodService.createFoodItem(user.id, await readJson(req)));
     return true;
   }
 
   const foodMatch = url.pathname.match(/^\/api\/foods\/(\d+)$/);
   if (foodMatch && req.method === "PATCH") {
-    const id = Number(foodMatch[1]);
-    const existing = db.prepare("SELECT * FROM food_items WHERE id = ? AND owner_id = ?").get(id, user.id);
-    if (!existing) {
-      sendJson(res, 404, { error: "food item not found" });
-      return true;
-    }
-    const body = await readJson(req);
-    const item = normalizeFoodInput({
-      name: body.name ?? existing.name,
-      category: body.category ?? existing.category,
-      quantityText: body.quantityText ?? existing.quantity_text,
-      startDate: body.startDate !== undefined ? body.startDate : existing.start_date,
-      shelfLifeDays: body.shelfLifeDays !== undefined ? body.shelfLifeDays : existing.shelf_life_days,
-      expiresOn: body.expiresOn !== undefined ? body.expiresOn : existing.expires_on
-    });
-    db.prepare(`
-      UPDATE food_items SET name = ?, category = ?, quantity_text = ?, start_date = ?, shelf_life_days = ?, expires_on = ?, updated_at = ?
-      WHERE id = ? AND owner_id = ?
-    `).run(item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), id, user.id);
-    invalidateFrames();
-    sendJson(res, 200, decorateFood(db.prepare("SELECT * FROM food_items WHERE id = ?").get(id), localDateKey(config.timezone)));
+    sendJson(res, 200, foodService.updateFoodItem(user.id, Number(foodMatch[1]), await readJson(req)));
     return true;
   }
 
   if (foodMatch && req.method === "DELETE") {
-    const deleted = db.prepare("DELETE FROM food_items WHERE id = ? AND owner_id = ?").run(Number(foodMatch[1]), user.id);
-    if (!deleted.changes) {
-      sendJson(res, 404, { error: "food item not found" });
-      return true;
-    }
-    invalidateFrames();
-    sendJson(res, 200, { ok: true });
+    sendJson(res, 200, { ok: true, deleted: foodService.deleteFoodItem(user.id, Number(foodMatch[1])) });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/access-tokens") {
+    sendJson(res, 200, { tokens: accessTokenService.listTokens(user.id) });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/access-tokens") {
+    const body = await readJson(req);
+    sendJson(res, 201, accessTokenService.createToken(user.id, body.name));
+    return true;
+  }
+
+  const tokenMatch = url.pathname.match(/^\/api\/access-tokens\/(\d+)$/);
+  if (tokenMatch && req.method === "DELETE") {
+    sendJson(res, 200, accessTokenService.revokeToken(user.id, Number(tokenMatch[1])));
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agent/conversations") {
+    sendJson(res, 200, { configured: agentService.isConfigured(user.id), conversations: agentService.listConversations(user.id) });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agent/settings") {
+    sendJson(res, 200, aiSettingsService.getSettings(user.id));
+    return true;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/agent/settings") {
+    sendJson(res, 200, aiSettingsService.saveSettings(user.id, await readJson(req)));
+    return true;
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/api/agent/settings") {
+    sendJson(res, 200, aiSettingsService.clearSettings(user.id));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/agent/conversations") {
+    const body = await readJson(req);
+    sendJson(res, 201, agentService.createConversation(user.id, body.title));
+    return true;
+  }
+
+  const messagesMatch = url.pathname.match(/^\/api\/agent\/conversations\/([^/]+)\/messages$/);
+  if (messagesMatch && req.method === "GET") {
+    sendJson(res, 200, { messages: agentService.listMessages(user.id, decodeURIComponent(messagesMatch[1])) });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/agent/messages") {
+    const body = await readJson(req);
+    sendJson(res, 200, await agentService.sendMessage(user.id, body.conversationId, body.content));
+    return true;
+  }
+
+  const agentActionMatch = url.pathname.match(/^\/api\/agent\/actions\/([^/]+)\/(confirm|cancel)$/);
+  if (agentActionMatch && req.method === "POST") {
+    const id = decodeURIComponent(agentActionMatch[1]);
+    const result = agentActionMatch[2] === "confirm" ? agentService.confirmAction(user.id, id) : agentService.cancelAction(user.id, id);
+    sendJson(res, 200, result);
     return true;
   }
 
@@ -696,6 +783,10 @@ async function routeApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname === "/mcp") {
+      await handleMcp(req, res);
+      return;
+    }
     if (url.pathname.startsWith("/api/")) {
       const found = await routeApi(req, res, url);
       if (!found) sendJson(res, 404, { error: "not found" });
@@ -720,7 +811,7 @@ const server = http.createServer(async (req, res) => {
     sendText(res, 404, "not found\n");
   } catch (error) {
     console.error(error);
-    sendJson(res, 400, { error: error.message });
+    if (!res.headersSent) sendJson(res, error.statusCode || 400, { error: error.message });
   }
 });
 

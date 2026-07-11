@@ -1,8 +1,8 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
-const state = { user: null, foods: [], devices: [], users: [], canManageUsers: false, today: "", editingId: null, view: "overview" };
-const views = new Set(["overview", "foods", "display", "devices", "users"]);
+const state = { user: null, foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
 const message = $("#message");
@@ -133,7 +133,8 @@ function confirmDialog({
 }
 
 function setView(view, options = {}) {
-  const target = views.has(view) ? view : "overview";
+  const normalized = view === "display" ? "devices" : view;
+  const target = views.has(normalized) ? normalized : "overview";
   state.view = target;
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.viewPanel === target);
@@ -145,7 +146,8 @@ function setView(view, options = {}) {
     else button.removeAttribute("aria-current");
   });
   if (options.updateHash !== false) history.replaceState(null, "", `#${target}`);
-  if (target === "display") refreshPreview();
+  if (target === "devices") refreshPreview();
+  if (target === "agent") loadAgent().catch((error) => toast(error.message));
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -469,9 +471,9 @@ async function enterWorkspace(user) {
   $("#sessionActions").classList.remove("hidden");
   $("#accountName").textContent = displayName(user);
   $("#welcomeUser").textContent = displayName(user);
-  await Promise.all([loadFoods(), loadDevices(), loadUsers()]);
+  await Promise.all([loadFoods(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadConversations()]);
   const initialView = location.hash.slice(1);
-  setView(views.has(initialView) ? initialView : "overview", { updateHash: false, scroll: false });
+  setView(initialView || "overview", { updateHash: false, scroll: false });
 }
 
 async function loadFoods() {
@@ -556,6 +558,97 @@ async function loadUsers() {
   $("#users").innerHTML = result.users.length
     ? result.users.map(renderUser).join("")
     : `<p class="muted">暂无用户。</p>`;
+}
+
+async function loadTokens() {
+  const result = await api("/api/access-tokens");
+  state.tokens = result.tokens;
+  $("#accessTokens").innerHTML = result.tokens.length ? result.tokens.map((token) => `
+    <article class="token-row">
+      <div><strong>${escapeHtml(token.name)}</strong><code>${escapeHtml(token.prefix)}…</code></div>
+      <small>${token.revokedAt ? "已撤销" : `有效期至 ${escapeHtml(formatDate(token.expiresAt))}`}${token.lastUsedAt ? ` · 最近使用 ${escapeHtml(formatTime(token.lastUsedAt))}` : ""}</small>
+      ${token.revokedAt ? "" : `<button class="delete" type="button" data-revoke-token="${token.id}">撤销</button>`}
+    </article>
+  `).join("") : `<p class="muted">尚未创建 MCP 访问令牌。</p>`;
+}
+
+async function loadAiSettings() {
+  const result = await api("/api/agent/settings");
+  state.aiSettings = result;
+  const form = $("#aiSettingsForm");
+  form.elements.openaiApiKey.value = "";
+  form.elements.openaiApiKey.placeholder = result.configured
+    ? `${result.apiKeyHint}（留空保留）`
+    : "首次配置必填";
+  form.elements.openaiModel.value = result.openaiModel || "";
+  form.elements.openaiBaseUrl.value = result.openaiBaseUrl || "https://api.openai.com/v1";
+  $("#aiSettingsState").textContent = result.configured ? `已配置 ${result.apiKeyHint}` : "未配置";
+  $("#clearAiSettings").disabled = !result.configured;
+}
+
+async function loadConversations() {
+  const result = await api("/api/agent/conversations");
+  state.agentConfigured = result.configured;
+  state.conversations = result.conversations;
+  $("#agentStatus").textContent = result.configured ? "模型已连接" : "Agent 未配置";
+  $("#overviewAgentStatus").textContent = result.configured ? "" : "Agent 未配置，请先在用户页面填写自己的模型信息。";
+  $("#agentForm").classList.toggle("agent-disabled", !result.configured);
+  $("#agentForm").querySelector("textarea").disabled = !result.configured;
+  $("#agentForm").querySelector("button").disabled = !result.configured;
+  $("#overviewAgentForm").classList.toggle("agent-disabled", !result.configured);
+  $("#overviewAgentForm").querySelector("textarea").disabled = !result.configured;
+  $("#overviewAgentForm").querySelector("button").disabled = !result.configured;
+  if (!state.activeConversationId && result.conversations.length) state.activeConversationId = result.conversations[0].id;
+  renderConversations();
+  if (state.activeConversationId) await loadAgentMessages();
+}
+
+function renderConversations() {
+  $("#conversations").innerHTML = state.conversations.length ? state.conversations.map((conversation) => `
+    <button type="button" class="conversation-item ${conversation.id === state.activeConversationId ? "active" : ""}" data-conversation="${escapeHtml(conversation.id)}">
+      <strong>${escapeHtml(conversation.title)}</strong><small>${escapeHtml(formatTime(conversation.updatedAt))}</small>
+    </button>
+  `).join("") : `<p class="muted">点击“新对话”开始。</p>`;
+}
+
+function renderAgentEvent(event) {
+  if (event.pendingAction) {
+    const pending = event.pendingAction;
+    return `<article class="pending-action" data-pending-card="${escapeHtml(pending.id)}">
+      <strong>需要确认</strong><span>${escapeHtml(pending.summary)}</span>
+      <small>有效期至 ${escapeHtml(formatTime(pending.expiresAt))}</small>
+      <div><button type="button" class="quiet" data-agent-cancel="${escapeHtml(pending.id)}">取消</button><button type="button" class="primary" data-agent-confirm="${escapeHtml(pending.id)}">确认执行</button></div>
+    </article>`;
+  }
+  if (event.executed) return `<div class="agent-result">已完成 ${event.executed.length} 项变更</div>`;
+  return "";
+}
+
+function renderAgentMessage(message) {
+  const events = message.metadata?.events || [];
+  return `<article class="agent-message ${message.role}">
+    <div>${escapeHtml(message.content).replaceAll("\n", "<br>")}</div>
+    ${events.map(renderAgentEvent).join("")}
+  </article>`;
+}
+
+async function loadAgentMessages() {
+  if (!state.activeConversationId) return;
+  const result = await api(`/api/agent/conversations/${encodeURIComponent(state.activeConversationId)}/messages`);
+  $("#agentMessages").innerHTML = result.messages.length
+    ? result.messages.map(renderAgentMessage).join("")
+    : `<div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>`;
+  $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
+}
+
+async function loadAgent() {
+  await loadConversations();
+}
+
+async function createConversation() {
+  const conversation = await api("/api/agent/conversations", { method: "POST", body: JSON.stringify({ title: "新对话" }) });
+  state.activeConversationId = conversation.id;
+  await loadConversations();
 }
 
 function displayName(user) {
@@ -662,6 +755,9 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("[data-view-target]");
   if (!link) return;
   setView(link.dataset.viewTarget);
+  if (link.dataset.deviceSection === "preview") {
+    window.requestAnimationFrame(() => $("#devicePreviewSection").scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 });
 
 window.addEventListener("hashchange", () => {
@@ -789,11 +885,11 @@ foodForm.elements.shelfLifeDays.addEventListener("input", () => {
 $("#refreshPreview").addEventListener("click", refreshPreview);
 $("#previewOrientation").addEventListener("change", refreshPreview);
 window.addEventListener("resize", () => {
-  if (state.view === "display") updatePreviewScale();
+  if (state.view === "devices") updatePreviewScale();
 });
 if ("ResizeObserver" in window) {
   new ResizeObserver(() => {
-    if (state.view === "display") updatePreviewScale();
+    if (state.view === "devices") updatePreviewScale();
   }).observe(screenFrame);
 }
 
@@ -835,6 +931,170 @@ $("#generatePairingCode").addEventListener("click", async () => {
     toast(error.message);
   }
 });
+
+$("#tokenForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.target.querySelector("button");
+  button.disabled = true;
+  try {
+    const data = new FormData(event.target);
+    const result = await api("/api/access-tokens", { method: "POST", body: JSON.stringify({ name: data.get("name") }) });
+    $("#newTokenValue").textContent = result.token;
+    $("#newTokenPanel").classList.remove("hidden");
+    event.target.reset();
+    await loadTokens();
+    toast("访问令牌已生成");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#aiSettingsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const data = new FormData(event.target);
+    await api("/api/agent/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        openaiApiKey: data.get("openaiApiKey"),
+        openaiModel: data.get("openaiModel"),
+        openaiBaseUrl: data.get("openaiBaseUrl")
+      })
+    });
+    await Promise.all([loadAiSettings(), loadConversations()]);
+    toast("模型配置已保存");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#clearAiSettings").addEventListener("click", async () => {
+  const confirmed = await confirmDialog({
+    title: "清除模型配置？",
+    body: "清除后，当前账号将无法使用概览和助手页面中的 Agent，历史对话不会删除。",
+    confirmText: "清除",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+  try {
+    await api("/api/agent/settings", { method: "DELETE" });
+    await Promise.all([loadAiSettings(), loadConversations()]);
+    toast("模型配置已清除");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#copyToken").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#newTokenValue").textContent);
+    toast("令牌已复制");
+  } catch {
+    toast("复制失败，请手动选择令牌");
+  }
+});
+
+$("#accessTokens").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-revoke-token]");
+  if (!button) return;
+  const confirmed = await confirmDialog({ title: "撤销访问令牌？", body: "使用该令牌的 Agent 将立即无法访问食材。", confirmText: "撤销", tone: "danger" });
+  if (!confirmed) return;
+  try {
+    await api(`/api/access-tokens/${button.dataset.revokeToken}`, { method: "DELETE" });
+    await loadTokens();
+    toast("令牌已撤销");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#newConversation").addEventListener("click", () => createConversation().catch((error) => toast(error.message)));
+
+$("#conversations").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-conversation]");
+  if (!button) return;
+  state.activeConversationId = button.dataset.conversation;
+  renderConversations();
+  await loadAgentMessages();
+});
+
+$("#agentForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const textarea = event.target.elements.content;
+  const content = textarea.value.trim();
+  if (!content) return;
+  if (!state.activeConversationId) await createConversation();
+  const button = event.target.querySelector("button");
+  textarea.disabled = true;
+  button.disabled = true;
+  textarea.value = "";
+  $("#agentMessages").insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="agentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
+  $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
+  try {
+    await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
+    await Promise.all([loadConversations(), loadFoods()]);
+  } catch (error) {
+    $("#agentThinking")?.remove();
+    toast(error.message);
+  } finally {
+    textarea.disabled = !state.agentConfigured;
+    button.disabled = !state.agentConfigured;
+    textarea.focus();
+  }
+});
+
+$("#overviewAgentForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const textarea = event.target.elements.content;
+  const content = textarea.value.trim();
+  if (!content) return;
+  if (!state.activeConversationId) await createConversation();
+  const button = event.target.querySelector("button");
+  textarea.disabled = true;
+  button.disabled = true;
+  $("#overviewAgentResult").classList.remove("hidden");
+  $("#overviewAgentResult").innerHTML = `<article class="agent-message assistant thinking"><div>正在处理…</div></article>`;
+  try {
+    const result = await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
+    textarea.value = "";
+    $("#overviewAgentResult").innerHTML = renderAgentMessage(result.message);
+    await Promise.all([loadConversations(), loadFoods()]);
+  } catch (error) {
+    $("#overviewAgentResult").innerHTML = `<div class="agent-quick-error">${escapeHtml(error.message)}</div>`;
+    toast(error.message);
+  } finally {
+    textarea.disabled = !state.agentConfigured;
+    button.disabled = !state.agentConfigured;
+    textarea.focus();
+  }
+});
+
+async function handleAgentActionClick(event) {
+  const confirm = event.target.closest("[data-agent-confirm]");
+  const cancel = event.target.closest("[data-agent-cancel]");
+  if (!confirm && !cancel) return;
+  const id = confirm?.dataset.agentConfirm || cancel.dataset.agentCancel;
+  try {
+    await api(`/api/agent/actions/${encodeURIComponent(id)}/${confirm ? "confirm" : "cancel"}`, { method: "POST", body: "{}" });
+    await Promise.all([loadAgentMessages(), loadFoods()]);
+    if (state.view === "devices") refreshPreview();
+    if (event.currentTarget.id === "overviewAgentResult") {
+      event.currentTarget.innerHTML = `<div class="agent-result">${confirm ? "操作已确认执行" : "操作已取消"}</div>`;
+    }
+    toast(confirm ? "操作已确认执行" : "操作已取消");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+$("#agentMessages").addEventListener("click", handleAgentActionClick);
+$("#overviewAgentResult").addEventListener("click", handleAgentActionClick);
 
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

@@ -22,13 +22,13 @@
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c4.4 0 8-3.6 8-8 0-3.9-2.8-7.2-6.6-7.9L12 2 10.6 5.1C6.8 5.8 4 9.1 4 13c0 4.4 3.6 8 8 8Zm-2.5-9.5c1.5 0 2.5 1 2.5 2.5 0-1.5 1-2.5 2.5-2.5-1.5 0-2.5-1-2.5-2.5 0 1.5-1 2.5-2.5 2.5Z"/></svg>
         <span>食材</span>
       </button>
-      <button type="button" data-view-target="display">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4V5Zm2 2v8h12V7H6Zm3 12h6v2H9v-2Z"/></svg>
-        <span>墨水屏</span>
-      </button>
       <button type="button" data-view-target="devices">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 3v10h10V6H7Zm4 12v1h2v-1h-2Z"/></svg>
         <span>设备</span>
+      </button>
+      <button type="button" data-view-target="agent">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-4 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 5v2h2V9H7Zm4 0v2h2V9h-2Zm4 0v2h2V9h-2Z"/></svg>
+        <span>助手</span>
       </button>
       <button type="button" data-view-target="users">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0H5Z"/></svg>
@@ -76,7 +76,16 @@
             <p class="eyebrow">今日冰箱状态</p>
             <h1>你好，<span id="welcomeUser">admin</span></h1>
             <p id="todayText" class="muted"></p>
-            <button class="primary compact" type="button" data-view-target="foods" data-new-food>添加食材</button>
+            <div class="welcome-agent">
+              <strong>直接告诉助手你想做什么</strong>
+              <form id="overviewAgentForm" class="welcome-agent-form">
+                <textarea name="content" maxlength="4000" rows="2" placeholder="例如：添加一盒牛奶，7 月 20 日到期" required></textarea>
+                <button class="primary" type="submit">交给助手</button>
+              </form>
+              <div id="overviewAgentResult" class="overview-agent-result hidden" aria-live="polite"></div>
+              <span id="overviewAgentStatus" class="overview-agent-status muted"></span>
+            </div>
+            <button class="link welcome-manual-add" type="button" data-view-target="foods" data-new-food>手动添加食材</button>
           </article>
           <article class="tile stat total"><span>全部食材</span><strong id="totalCount">0</strong><small>项记录</small></article>
           <article class="tile stat danger"><span>已经过期</span><strong id="expiredCount">0</strong><small>需要处理</small></article>
@@ -91,7 +100,7 @@
           <article class="tile screen-summary">
             <div class="tile-head">
               <div><p class="eyebrow">电子纸同步</p><h2>墨水屏</h2></div>
-              <button class="link" type="button" data-view-target="display">查看画面</button>
+              <button class="link" type="button" data-view-target="devices" data-device-section="preview">查看画面</button>
             </div>
             <p class="screen-copy">显示最需处理的 9 项，设备按设定周期获取最新画面。</p>
             <div id="overviewDevice" class="sync-state"></div>
@@ -122,37 +131,6 @@
         </div>
       </section>
 
-      <section class="view" data-view-panel="display" aria-label="墨水屏画面">
-        <div class="page-title">
-          <div><p class="eyebrow">四色电子纸</p><h1>屏幕画面</h1></div>
-          <div class="preview-tools">
-            <label class="inline-select">方向
-              <select id="previewOrientation">
-                <option value="portrait" selected>竖屏（设备默认）</option>
-                <option value="landscape">横屏（对照）</option>
-              </select>
-            </label>
-            <button id="refreshPreview" class="quiet" type="button">刷新预览</button>
-          </div>
-        </div>
-        <div class="display-layout">
-          <section class="panel display-card">
-            <div class="screen portrait" id="screenFrame">
-              <div class="screen-scale-frame">
-                <iframe id="screenPreview" title="墨水屏画面预览"></iframe>
-              </div>
-            </div>
-          </section>
-          <aside class="panel display-notes">
-            <h2>显示说明</h2>
-            <div class="note"><strong>9 项</strong><span>竖屏展示上限</span></div>
-            <div class="note"><strong>30 分钟</strong><span>设备常规定时检查</span></div>
-            <div class="note"><strong>96 KB</strong><span>四色原生帧协议</span></div>
-            <p class="muted">红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。</p>
-          </aside>
-        </div>
-      </section>
-
       <section class="view" data-view-panel="devices" aria-label="设备">
         <div class="page-title">
           <div><p class="eyebrow">硬件连接</p><h1>屏幕设备</h1></div>
@@ -173,6 +151,36 @@
             <div id="devices" class="devices"></div>
           </section>
         </div>
+        <section id="devicePreviewSection" class="device-preview-section">
+          <div class="device-section-title">
+            <div><p class="eyebrow">四色电子纸</p><h2>屏幕画面</h2></div>
+            <div class="preview-tools">
+              <label class="inline-select">方向
+                <select id="previewOrientation">
+                  <option value="portrait" selected>竖屏（设备默认）</option>
+                  <option value="landscape">横屏（对照）</option>
+                </select>
+              </label>
+              <button id="refreshPreview" class="quiet" type="button">刷新预览</button>
+            </div>
+          </div>
+          <div class="display-layout">
+            <section class="panel display-card">
+              <div class="screen portrait" id="screenFrame">
+                <div class="screen-scale-frame">
+                  <iframe id="screenPreview" title="墨水屏画面预览"></iframe>
+                </div>
+              </div>
+            </section>
+            <aside class="panel display-notes">
+              <h2>显示说明</h2>
+              <div class="note"><strong>9 项</strong><span>竖屏展示上限</span></div>
+              <div class="note"><strong>30 分钟</strong><span>设备常规定时检查</span></div>
+              <div class="note"><strong>96 KB</strong><span>四色原生帧协议</span></div>
+              <p class="muted">红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。</p>
+            </aside>
+          </div>
+        </section>
       </section>
 
       <section class="view" data-view-panel="users" aria-label="用户管理">
@@ -185,9 +193,69 @@
             <div class="section-head"><h2>当前账号</h2><span id="accountRole" class="role-pill"></span></div>
             <div id="accountPanel" class="account-summary"></div>
           </section>
+          <section class="panel ai-settings-card">
+            <div class="section-head"><h2>我的模型</h2><span id="aiSettingsState" class="muted">未配置</span></div>
+            <p class="muted">配置仅属于当前账号，API Key 会加密保存且不会再次回显。</p>
+            <form id="aiSettingsForm" class="ai-settings-form" autocomplete="off">
+              <label>API Key
+                <input name="openaiApiKey" type="password" autocomplete="new-password" placeholder="首次配置必填；留空则保留原 Key">
+              </label>
+              <label>模型
+                <input name="openaiModel" maxlength="120" placeholder="填写供应商提供的模型 ID" required>
+              </label>
+              <label class="ai-base-url">Base URL
+                <input name="openaiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
+              </label>
+              <div class="ai-settings-actions">
+                <button id="clearAiSettings" class="quiet" type="button">清除配置</button>
+                <button class="primary" type="submit">保存模型配置</button>
+              </div>
+            </form>
+          </section>
+          <section class="panel token-card">
+            <div class="section-head"><h2>Agent 接入</h2><span class="muted">MCP 个人令牌</span></div>
+            <form id="tokenForm" class="token-form">
+              <input name="name" maxlength="60" placeholder="例如：我的 Codex" required>
+              <button class="primary" type="submit">生成令牌</button>
+            </form>
+            <div id="newTokenPanel" class="new-token hidden">
+              <strong>请立即复制，关闭后不再显示</strong>
+              <code id="newTokenValue"></code>
+              <button id="copyToken" class="quiet" type="button">复制令牌</button>
+            </div>
+            <div id="accessTokens" class="token-list"></div>
+            <details class="mcp-config">
+              <summary>Codex 配置示例</summary>
+              <pre>[mcp_servers.xianzhitie]
+url = "https://example.com/mcp"
+bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
+            </details>
+          </section>
           <section class="panel collection">
             <div class="section-head"><h2>已注册用户</h2><span id="userScope" class="muted"></span></div>
             <div id="users" class="user-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" data-view-panel="agent" aria-label="食材助手">
+        <div class="page-title">
+          <div><p class="eyebrow">智能管理</p><h1>食材助手</h1></div>
+          <button id="newConversation" class="primary" type="button">新对话</button>
+        </div>
+        <div class="agent-layout">
+          <aside class="panel conversation-panel">
+            <div class="section-head"><h2>对话</h2><span id="agentStatus" class="muted"></span></div>
+            <div id="conversations" class="conversation-list"></div>
+          </aside>
+          <section class="panel chat-panel">
+            <div id="agentMessages" class="agent-messages" aria-live="polite">
+              <div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>
+            </div>
+            <form id="agentForm" class="agent-compose">
+              <textarea name="content" maxlength="4000" rows="3" placeholder="输入食材查询或管理指令…" required></textarea>
+              <button class="primary" type="submit">发送</button>
+            </form>
           </section>
         </div>
       </section>

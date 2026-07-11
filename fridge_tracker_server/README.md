@@ -2,11 +2,13 @@
 
 “鲜知贴”四色电子墨水屏食材保鲜提醒器的本地 MVP 服务：
 
-- 提供带导航栏的响应式 bento H5 工作台，将概览、食材管理、屏幕预览、设备绑定和用户管理拆分为独立视图。
+- 提供带导航栏的响应式 bento H5 工作台，将概览、食材管理、设备、助手和用户管理拆分为独立视图；设备绑定与墨水屏预览集中在同一页面。
 - 使用 Node.js 内置的 `node:sqlite` 保存本地数据。
 - 按上海时区计算到期状态，并优先展示最紧急的食材。
 - 以 `480x800` 竖屏作为默认展示方向，并向设备提供 `800x480` 四色原生帧接口及 `ETag`。
 - 使用 Playwright 与 `sharp` 将 HTML 画面转换为帧数据；中文排版在服务端完成，而不是交给 ESP32。
+- 提供带个人访问令牌认证的 Streamable HTTP MCP，让 Codex 等 Agent 管理当前用户的食材。
+- 可选启用内置文字 Agent，通过多轮对话查询或修改食材；删除和批量变更必须二次确认。
 
 ## 本地启动
 
@@ -42,6 +44,48 @@ cp config.example.json config.json
 ```
 
 在将服务暴露到本机以外的网络前，应先更换 `config.json` 中的所有密钥。`config.json` 和 `data/` 均已排除在 Git 跟踪范围外。
+
+## 内置文字 Agent
+
+每位用户在 H5 的“用户 → 我的模型”中配置自己的 API Key、模型 ID 和 Base URL。模型费用、配额和供应商账号归该用户自己，不会与其他鲜知贴账号共用。
+
+页面不会再次回显完整 API Key，只显示末四位提示。API Key 使用 AES-256-GCM 加密后保存到 SQLite；服务端加密密钥来自 `config.json`：
+
+```json
+{
+  "credentialEncryptionKey": "replace-with-a-long-random-secret"
+}
+```
+
+如果没有显式设置 `credentialEncryptionKey`，服务会兼容性地使用 `adminPassword` 加密；正式部署仍建议配置独立随机密钥。部署后不要随意更换用于加密的值，否则已保存的用户 API Key 将无法解密，需要用户重新填写。使用其他 OpenAI-compatible 服务时，用户可在页面把 Base URL 改为供应商提供的 `/v1` 地址。远程地址必须使用 HTTPS，本机模型服务可使用 `http://localhost` 或 `http://127.0.0.1`。
+
+未配置个人模型的账号仍可使用其他功能，概览和助手页面会提示用户前往自己的设置页面。官方 OpenAI 地址优先使用 Responses API；兼容地址使用 Chat Completions，并在接口明确不支持时回退。
+
+助手支持食材查询、单项新增和单项修改。删除以及一次包含多项写入的操作会生成五分钟有效的确认卡，只有当前登录用户确认后才会在一个数据库事务中执行。第一期只支持文字输入，不申请麦克风权限，也不上传音频。
+
+## MCP 接入
+
+登录 H5 后，在“用户”页面的“Agent 接入”区域创建个人访问令牌。令牌明文只显示一次，默认 90 天有效，可以随时撤销。MCP 地址为：
+
+```text
+http://127.0.0.1:8788/mcp
+```
+
+Codex 的 `~/.codex/config.toml` 示例：
+
+```toml
+[mcp_servers.xianzhitie]
+url = "http://127.0.0.1:8788/mcp"
+bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"
+```
+
+启动 Codex 前把刚创建的令牌放入环境变量：
+
+```sh
+export XIANZHITIE_MCP_TOKEN='xzt_...'
+```
+
+MCP 提供 `list_foods`、`get_food`、`create_food`、`update_food` 和 `delete_food` 五个工具。令牌只能访问其所属账号的食材。对外提供 MCP 时应通过 HTTPS 反向代理暴露，不能直接把本地 HTTP 服务公开到互联网。
 
 `adminLogin`、`adminEmail` 与 `adminPassword` 是本地管理员账号的初始
 配置。修改 `adminPassword` 并重启服务后，服务会更新管理员账号的密码
@@ -101,6 +145,24 @@ GET    /api/devices
 POST   /api/devices/pairing-codes
 GET    /api/display/preview?panel=gdem075f52&orientation=portrait
 GET    /api/display/frame.png?panel=gdem075f52&orientation=portrait
+GET    /api/access-tokens
+POST   /api/access-tokens
+DELETE /api/access-tokens/:id
+GET    /api/agent/conversations
+POST   /api/agent/conversations
+GET    /api/agent/conversations/:id/messages
+GET    /api/agent/settings
+PUT    /api/agent/settings
+DELETE /api/agent/settings
+POST   /api/agent/messages
+POST   /api/agent/actions/:id/confirm
+POST   /api/agent/actions/:id/cancel
+```
+
+远程 Agent 接口：
+
+```text
+POST /mcp    # MCP Streamable HTTP，Authorization: Bearer xzt_...
 ```
 
 设备接口：

@@ -7,5 +7,6 @@
   "adminLogin": "admin",
   "adminEmail": "admin@example.com",
   "adminPassword": "change-this-password",
-  "demoDeviceToken": "change-this-device-token"
+  "demoDeviceToken": "change-this-device-token",
+  "credentialEncryptionKey": "replace-with-a-long-random-secret"
 }
