@@ -4,6 +4,13 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { toolSpecs } = require("./foodTools");
 
+const MCP_INSTRUCTIONS = [
+  "鲜知贴用于管理当前登录用户的冰箱食材和保鲜期限，帮助查询库存、临期与过期食材，并维护食材名称、品类、数量、购买或生产日期、保鲜天数和到期日。",
+  "所有工具都只访问令牌所属账号的数据。根据用户的明确意图执行新增、修改或删除；信息不足时先询问，不要自行猜测食材信息。",
+  "修改和删除前先通过 list_foods 或 get_foods 获取准确 ID，绝不臆造 ID。delete_foods 是永久删除操作，调用前必须确认用户确实要求删除。",
+  "本 MCP 不管理用户账号、模型配置或墨水屏设备。"
+].join("\n");
+
 function toolResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }], structuredContent: value };
 }
@@ -13,7 +20,10 @@ function toolError(error) {
 }
 
 function createMcpServer(foodService, user) {
-  const server = new McpServer({ name: "xianzhitie", version: "1.0.0" });
+  const server = new McpServer(
+    { name: "xianzhitie", version: "1.0.0" },
+    { instructions: MCP_INSTRUCTIONS }
+  );
   const run = (handler) => async (args) => {
     try {
       return toolResult(await handler(args));

@@ -16,6 +16,9 @@ test("MCP exposes scoped batch food CRUD tools", async () => {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
+  assert.match(client.getInstructions(), /管理当前登录用户的冰箱食材和保鲜期限/);
+  assert.match(client.getInstructions(), /绝不臆造 ID/);
+  assert.match(client.getInstructions(), /不管理用户账号、模型配置或墨水屏设备/);
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name), ["list_foods", "get_foods", "create_foods", "update_foods", "delete_foods"]);
   const created = await client.callTool({

@@ -70,6 +70,14 @@ function toast(text) {
   toast.timer = setTimeout(() => message.classList.remove("show"), 2500);
 }
 
+function mcpUrl() {
+  return new URL("/mcp", window.location.origin).href;
+}
+
+function agentSetupPrompt(token) {
+  return `请帮我安装“鲜知贴”MCP：名称设为 xianzhitie，服务地址是 ${mcpUrl()}，Bearer Token 是 ${token}。请按当前 Agent 客户端支持的方式完成配置，将令牌作为 XIANZHITIE_MCP_TOKEN 环境变量安全保存，不要把令牌写进项目文件、提交到 Git 或在回复中重复展示；配置后验证 MCP 是否能连接，并告诉我是否需要重启客户端。`;
+}
+
 function setAuthMode(mode) {
   const register = mode === "register";
   loginForm.classList.toggle("hidden", register);
@@ -1012,6 +1020,7 @@ $("#tokenForm").addEventListener("submit", async (event) => {
     const data = new FormData(event.target);
     const result = await api("/api/access-tokens", { method: "POST", body: JSON.stringify({ name: data.get("name") }) });
     $("#newTokenValue").textContent = result.token;
+    $("#agentSetupPrompt").textContent = agentSetupPrompt(result.token);
     $("#newTokenPanel").classList.remove("hidden");
     event.target.reset();
     await loadTokens();
@@ -1069,6 +1078,15 @@ $("#copyToken").addEventListener("click", async () => {
     toast("令牌已复制");
   } catch {
     toast("复制失败，请手动选择令牌");
+  }
+});
+
+$("#copyAgentSetup").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#agentSetupPrompt").textContent);
+    toast("Agent 配置指令已复制");
+  } catch {
+    toast("复制失败，请手动选择配置指令");
   }
 });
 

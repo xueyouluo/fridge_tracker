@@ -90,6 +90,8 @@ http://127.0.0.1:8788/mcp
 https://fridge.followllm.online/mcp
 ```
 
+生成令牌后可以点击“复制给 Agent”，将自动生成一条包含当前 MCP 地址和本次令牌的安装指令。把它发送给 Codex 等 Agent 后，Agent 会按其客户端支持的方式配置 `xianzhitie`、安全保存 `XIANZHITIE_MCP_TOKEN` 并验证连接；令牌不应写入项目文件或提交到 Git。
+
 Codex 的 `~/.codex/config.toml` 示例：
 
 ```toml

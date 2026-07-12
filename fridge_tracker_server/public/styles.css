@@ -612,7 +612,9 @@ body.modal-open { overflow: hidden; }
 .token-form .primary { height: 48px; }
 .new-token { display: grid; gap: 10px; margin: 16px 0; padding: 14px; border-radius: 14px; background: var(--yellow-soft); }
 .new-token code { padding: 10px; overflow-wrap: anywhere; border-radius: 9px; background: #fff; user-select: all; }
-.new-token .quiet { justify-self: start; }
+.token-copy-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-setup-hint { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.new-token .agent-setup-prompt { color: var(--muted); font-family: inherit; font-size: 12px; line-height: 1.55; }
 .token-list { display: grid; gap: 9px; margin-top: 16px; }
 .token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; align-items: center; padding: 12px; border-radius: 13px; background: #f8faf7; }
 .token-row div { display: flex; align-items: center; gap: 10px; min-width: 0; }

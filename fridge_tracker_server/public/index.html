@@ -227,13 +227,18 @@
             <div id="newTokenPanel" class="new-token hidden">
               <strong>请立即复制，关闭后不再显示</strong>
               <code id="newTokenValue"></code>
-              <button id="copyToken" class="quiet" type="button">复制令牌</button>
+              <div class="token-copy-actions">
+                <button id="copyAgentSetup" class="primary" type="button">复制给 Agent</button>
+                <button id="copyToken" class="quiet" type="button">仅复制令牌</button>
+              </div>
+              <p class="agent-setup-hint">复制后发送给 Codex 等 Agent，它会按当前客户端支持的方式配置并验证 MCP。</p>
+              <code id="agentSetupPrompt" class="agent-setup-prompt"></code>
             </div>
             <div id="accessTokens" class="token-list"></div>
             <details class="mcp-config">
               <summary>Codex 配置示例</summary>
-              <pre>[mcp_servers.xianzhitie]
-url = "https://example.com/mcp"
+              <pre id="mcpConfigExample">[mcp_servers.xianzhitie]
+url = "https://fridge.followllm.online/mcp"
 bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
             </details>
           </section>
