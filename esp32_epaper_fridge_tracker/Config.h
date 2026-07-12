@@ -2,19 +2,13 @@
 
 #include <Arduino.h>
 
-// Select the physical panel before compiling. The legacy
-// FRIDGE_USE_GDEM0397F81 flag remains supported for existing build commands.
+// Select exactly one physical panel before compiling.
 #define FRIDGE_PANEL_GDEM075F52 0
 #define FRIDGE_PANEL_GDEM0397F81 1
 #define FRIDGE_PANEL_GDEY042Z98 2
 
-#ifndef FRIDGE_PANEL_TYPE
-  #if defined(FRIDGE_USE_GDEM0397F81) && FRIDGE_USE_GDEM0397F81
-    #define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEM0397F81
-  #else
-    #define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEM075F52
-  #endif
-#endif
+// Change only the value on this line when using a different panel.
+#define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEY042Z98
 
 #if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEM0397F81
 static const char* PANEL_PROFILE = "gdem0397f81";

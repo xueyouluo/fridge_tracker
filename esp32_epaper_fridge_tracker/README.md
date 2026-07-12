@@ -4,6 +4,41 @@
 编译时根据目标芯片自动选择引脚、Wi-Fi 参数和显示缓冲策略，上层配网、注册、
 帧下载、`ETag`、配置入口与休眠流程只维护一份。
 
+## 编译前配置（先看这里）
+
+编译前只需要确认两件事：**屏幕型号在 `Config.h` 中选择，处理器型号在
+Arduino IDE 的开发板菜单中选择。不要手动修改 `BoardProfile.h`。**
+
+### 1. 选择屏幕
+
+打开 `Config.h`，找到下面这行（当前默认是 7.5 寸四色屏）：
+
+```cpp
+#define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEM075F52
+```
+
+根据实际屏幕，只修改这一行最右侧的配置值，不要另外新增
+`FRIDGE_PANEL_TYPE`：
+
+| 实际屏幕 | 配置值 |
+| --- | --- |
+| 7.5 寸 GDEM075F52，800x480 黑白黄红四色 | `FRIDGE_PANEL_GDEM075F52` |
+| 3.97 寸 GDEM0397F81，800x480 黑白黄红四色 | `FRIDGE_PANEL_GDEM0397F81` |
+| 4.2 寸 GDEY042Z98 / E042A13，400x300 黑白红三色 | `FRIDGE_PANEL_GDEY042Z98` |
+
+### 2. 选择处理器
+
+处理器不在代码中手动配置。在 Arduino IDE 中打开
+`esp32_epaper_fridge_tracker.ino`，然后通过 `Tools → Board` 选择：
+
+| 实际开发板 | Arduino IDE Board | 关键设置 |
+| --- | --- | --- |
+| ESP32-C3 Super Mini | `Nologo ESP32C3 Super Mini` | 4MB Flash；`No OTA (2MB APP/2MB FATFS)`；USB CDC Enabled |
+| ESP32-S3 N16R8 | `ESP32S3 Dev Module` | 16MB Flash；`16M Flash (3MB APP/9.9MB FATFS)`；OPI PSRAM；USB CDC Enabled |
+
+固件会根据 Arduino IDE 选择的目标处理器自动进入 C3 或 S3 分支。命令行编译时
+由 `--fqbn` 决定处理器；`sketch.yaml` 的默认目标是 C3。
+
 ## 功能
 
 - 首次启动创建 `XianZhiTie-xxxxxx` 热点，打开 `192.168.4.1` 完成配置。
@@ -16,7 +51,7 @@
 
 ## 支持的屏幕
 
-在 `Config.h` 中通过 `FRIDGE_PANEL_TYPE` 编译期选择屏幕：
+屏幕通过 `Config.h` 中的 `FRIDGE_PANEL_TYPE` 在编译期选择：
 
 | 屏幕 | 帧协议 | GxEPD2 驱动 | 配置值 |
 | --- | --- | --- | --- |
@@ -24,7 +59,7 @@
 | `GDEM0397F81` | 800x480 四色，96,000 字节 | `GxEPD2_397c_GDEM0397F81` | `FRIDGE_PANEL_GDEM0397F81` |
 | `GDEY042Z98` / E042A13 | 400x300 黑白红，30,000 字节 | `GxEPD2_420c_GDEY042Z98` | `FRIDGE_PANEL_GDEY042Z98` |
 
-例如选择 4.2 寸三色屏：
+例如选择 4.2 寸三色屏时，把默认配置行改成：
 
 ```cpp
 #define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEY042Z98
@@ -32,8 +67,8 @@
 
 ## 板卡适配
 
-`BoardProfile.h` 根据 `CONFIG_IDF_TARGET_ESP32C3` 或
-`CONFIG_IDF_TARGET_ESP32S3` 自动选择板卡，不需要手动修改板卡宏。
+`BoardProfile.h` 根据 Arduino IDE/CLI 产生的 `CONFIG_IDF_TARGET_ESP32C3`
+或 `CONFIG_IDF_TARGET_ESP32S3` 自动选择板卡，不需要手动修改板卡宏。
 
 - C3 通常没有 PSRAM：GxEPD2 页缓冲为 30 行，四色帧从 FFat 每次读取
   20 行并调用 `writeNative()`，最后执行一次整屏刷新。
