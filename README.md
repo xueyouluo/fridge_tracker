@@ -271,10 +271,18 @@ python models/ink_frame_v1/design_checks.py
 
 然后重新导出并检查完整装配、前框和后壳 STEP。详细开发约定见 `AGENTS.md`。
 
+## 许可协议
+
+本仓库使用 [PolyForm Noncommercial License 1.0.0](LICENSE)，适用于仓库中的
+服务端代码、固件、文档、CAD 文件和可打印模型。允许个人学习、研究、业余项目以及
+其他非商业目的下的使用、修改和分发，但不允许商业使用。如需商业使用，必须事先获得
+版权持有者的单独书面授权。
+
+由于限制商业使用，该许可不属于 OSI 定义的开源许可，更准确地说是“源码可用”（source-available）许可。
+
 ## 安全提醒
 
 - 不要提交 `fridge_tracker_server/config.json`、`fridge_tracker_server/data/`、`.env*`、
   生成的帧二进制文件或构建产物。
 - 对外提供服务时必须替换所有示例密码和 token，并使用 HTTPS。
 - 个人模型 API Key 不应写入仓库；页面会按账号加密保存。
-- 当前仓库尚未包含许可证文件；复制、修改或再分发前请先确认后续许可证说明。

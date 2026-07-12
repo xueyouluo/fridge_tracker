@@ -2,6 +2,7 @@
   "name": "fridge-tracker-server",
   "version": "0.1.0",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "description": "Local H5 and four-color e-paper frame server for XianZhi Tie.",
   "main": "src/server.js",
   "scripts": {
