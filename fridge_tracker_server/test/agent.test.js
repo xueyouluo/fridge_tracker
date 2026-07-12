@@ -87,7 +87,7 @@ test("conversation deletion is owner scoped and cascades messages and pending ac
   assert.equal(agent.listConversations(2).length, 1);
 });
 
-test("calculated expiry creates execute after conversational confirmation", () => {
+test("calculated expiry creates execute directly", () => {
   const db = createTestDatabase();
   const foods = createFoodService({ db });
   const agent = createAgentService({ db, foodService: foods });
@@ -117,22 +117,23 @@ test("agent chat tool loop executes a model-proposed single create", async () =>
   const client = { chat: { completions: { create: async (request) => {
     call += 1;
     if (call === 1) {
-      assert.match(request.messages[0].content, /新购语义/);
-      assert.match(request.messages[0].content, /startDate 建议为今天/);
+      assert.match(request.messages[0].content, /直接调用 create_foods/);
+      assert.match(request.messages[0].content, /startDate 设为今天/);
       assert.match(request.messages[0].content, /偏保守且合理的 shelfLifeDays/);
-      assert.match(request.messages[0].content, /绝对不要调用 create_foods/);
-      assert.match(request.messages[0].content, /只有用户明确回复确认/);
+      assert.match(request.messages[0].content, /不要先询问用户确认/);
+      assert.match(request.messages[0].content, /可继续对话修改/);
       return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
-        id: "call-1", type: "function", function: { name: "create_foods", arguments: JSON.stringify({ items: [{ name: "西红柿", expiresOn: "2026-07-20" }] }) }
+        id: "call-1", type: "function", function: { name: "create_foods", arguments: JSON.stringify({ items: [{ name: "西红柿", category: "蔬菜", startDate: "2026-07-12", shelfLifeDays: 7 }] }) }
       }] } }] };
     }
-    return { choices: [{ message: { role: "assistant", content: "已添加西红柿。" } }] };
+    return { choices: [{ message: { role: "assistant", content: "已添加西红柿：蔬菜，今天购买，保鲜 7 天，7 月 19 日到期。可以继续告诉我修改。" } }] };
   } } } };
   const agent = createAgentService({ db, foodService: foods, client, model: "test", baseURL: "https://compatible.example/v1" });
   const conversation = agent.createConversation(1);
   const result = await agent.sendMessage(1, conversation.id, "添加西红柿");
-  assert.equal(result.message.content, "已添加西红柿。");
+  assert.match(result.message.content, /保鲜 7 天/);
   assert.equal(foods.listFoodItems(1)[0].name, "西红柿");
+  assert.equal(foods.listFoodItems(1)[0].expiresOn, "2026-07-19");
   const protocolRows = db.prepare("SELECT role, protocol, payload_json FROM agent_messages WHERE protocol IS NOT NULL ORDER BY id").all();
   assert.deepEqual(protocolRows.map((row) => [row.role, row.protocol]), [["assistant", "chat"], ["tool", "chat"]]);
   assert.equal(JSON.parse(protocolRows[0].payload_json).tool_calls[0].function.name, "create_foods");
@@ -140,7 +141,7 @@ test("agent chat tool loop executes a model-proposed single create", async () =>
   assert.deepEqual(agent.listMessages(1, conversation.id).map((message) => message.role), ["user", "assistant"]);
 });
 
-test("new purchases stay as editable text drafts until the user confirms", async () => {
+test("new purchases execute with inferred defaults and can be revised in conversation", async () => {
   const db = createTestDatabase();
   const foods = createFoodService({ db });
   let call = 0;
@@ -148,40 +149,49 @@ test("new purchases stay as editable text drafts until the user confirms", async
     call += 1;
     if (call === 1) {
       assert.equal(request.messages.at(-1).content, "刚买了一盒牛奶");
-      return { choices: [{ message: { role: "assistant", content: "建议：牛奶，乳品，1 盒，购买日 2026-07-12，保鲜 7 天，到期日 2026-07-19。确认吗？" } }] };
-    }
-    if (call === 2) {
-      assert.equal(request.messages.at(-1).content, "改成保鲜 5 天");
-      return { choices: [{ message: { role: "assistant", content: "已修改：牛奶，乳品，1 盒，购买日 2026-07-12，保鲜 5 天，到期日 2026-07-17。确认吗？" } }] };
-    }
-    if (call === 3) {
-      assert.equal(request.messages.at(-1).content, "确认");
       return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
-        id: "confirm-create-1",
+        id: "create-milk",
         type: "function",
         function: {
           name: "create_foods",
-          arguments: JSON.stringify({ items: [{ name: "牛奶", category: "乳品", quantityText: "1 盒", startDate: "2026-07-12", shelfLifeDays: 5 }] })
+          arguments: JSON.stringify({ items: [{ name: "牛奶", category: "乳品", quantityText: "1 盒", startDate: "2026-07-12", shelfLifeDays: 7 }] })
         }
       }] } }] };
     }
-    assert.equal(request.messages.at(-1).role, "tool");
+    if (call === 2) {
+      assert.equal(request.messages.at(-1).role, "tool");
+      return { choices: [{ message: { role: "assistant", content: "已添加牛奶：乳品，1 盒，今天购买，保鲜 7 天，2026-07-19 到期。你可以继续告诉我修改。" } }] };
+    }
+    if (call === 3) {
+      assert.equal(request.messages.at(-1).content, "改成保鲜 5 天");
+      return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
+        id: "list-milk",
+        type: "function",
+        function: { name: "list_foods", arguments: JSON.stringify({ keyword: "牛奶" }) }
+      }] } }] };
+    }
+    if (call === 4) {
+      assert.match(request.messages.at(-1).content, /"name":"牛奶"/);
+      return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
+        id: "update-milk",
+        type: "function",
+        function: { name: "update_foods", arguments: JSON.stringify({ items: [{ id: 1, patch: { shelfLifeDays: 5, expiresOn: null } }] }) }
+      }] } }] };
+    }
+    assert.equal(call, 5);
     assert.match(request.messages.at(-1).content, /"status":"executed"/);
-    return { choices: [{ message: { role: "assistant", content: "已添加牛奶。" } }] };
+    return { choices: [{ message: { role: "assistant", content: "已将牛奶改为保鲜 5 天，2026-07-17 到期。" } }] };
   } } } };
   const agent = createAgentService({ db, foodService: foods, client, model: "test", baseURL: "https://compatible.example/v1" });
   const conversation = agent.createConversation(1);
 
-  const draft = await agent.sendMessage(1, conversation.id, "刚买了一盒牛奶");
-  assert.match(draft.message.content, /保鲜 7 天/);
-  assert.equal(foods.listFoodItems(1).length, 0);
+  const created = await agent.sendMessage(1, conversation.id, "刚买了一盒牛奶");
+  assert.match(created.message.content, /保鲜 7 天/);
+  assert.equal(foods.listFoodItems(1).length, 1);
+  assert.equal(foods.listFoodItems(1)[0].expiresOn, "2026-07-19");
 
   const revised = await agent.sendMessage(1, conversation.id, "改成保鲜 5 天");
   assert.match(revised.message.content, /保鲜 5 天/);
-  assert.equal(foods.listFoodItems(1).length, 0);
-
-  const confirmed = await agent.sendMessage(1, conversation.id, "确认");
-  assert.equal(confirmed.message.content, "已添加牛奶。");
   assert.equal(foods.listFoodItems(1)[0].expiresOn, "2026-07-17");
 });
 

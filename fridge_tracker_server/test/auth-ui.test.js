@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260712-3"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260712-4"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -73,7 +73,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260712-3/);
+  assert.match(html, /styles\.css\?v=20260712-4/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -82,6 +82,25 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   assert.match(css, /\.conversation-delete \{ opacity: 1; \}/);
   assert.match(server, /conversationMatch && req\.method === "DELETE"/);
   assert.match(server, /agentService\.deleteConversation\(user\.id/);
+});
+
+test("overview quick agent only reuses the latest conversation for one hour", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  assert.match(html, /app\.js\?v=20260712-4/);
+  assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
+  assert.match(app, /async function ensureOverviewConversation\(\)/);
+  assert.match(app, /const latest = state\.conversations\[0\]/);
+  assert.match(app, /Date\.now\(\) - updatedAt <= OVERVIEW_CONVERSATION_REUSE_MS/);
+  assert.match(app, /\$\("#overviewAgentForm"\)[\s\S]*await ensureOverviewConversation\(\)/);
+});
+
+test("agent markdown tables stay inside the overview card and scroll internally", () => {
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  assert.match(css, /\.welcome, \.welcome-agent, \.overview-agent-result \{ min-width: 0; \}/);
+  assert.match(css, /\.overview-agent-result \.agent-message \{ width: 100%; max-width: 100%; \}/);
+  assert.match(css, /\.agent-markdown \{ min-width: 0; max-width: 100%; overflow-wrap: anywhere; \}/);
+  assert.match(css, /\.markdown-table-wrap \{ width: 100%; min-width: 0; max-width: 100%;[\s\S]*overflow-x: auto; \}/);
 });
 
 test("pending actions show details before execution and block duplicate clicks", () => {

@@ -192,11 +192,11 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
   function instructions() {
     const today = localDateKey(timezone);
     return `你是鲜知贴食材管理助手。今天是 ${today}，时区 ${timezone}。回答简洁、明确。使用 YYYY-MM-DD 展示最终日期。\n` +
-      "查询、修改或删除前先列出食材并使用准确 ID；同名匹配多项时必须追问。一般新增若缺少到期日且没有开始日期与保鲜天数时必须追问。" +
+      "查询、修改或删除前先列出食材并使用准确 ID；同名匹配多项时必须追问。" +
       "调用 list_foods 时优先使用 keyword、category、status、expiresFrom 或 expiresTo 缩小范围；结果 hasMore 为 true 时按需使用 offset 继续查询。" +
-      `但当用户表达“买了新的、刚买了、采购了、带回了”等新购语义且没有提供日期时，把 startDate 建议为今天 ${today}，根据食材名称、品类和常见冷藏条件选择偏保守且合理的 shelfLifeDays，并计算建议到期日。` +
+      `当用户表达添加、新购、刚买、采购、带回等新增语义时，只要食材名称明确就直接调用 create_foods，不要先询问用户确认。若未提供日期，把 startDate 设为今天 ${today}，根据食材名称、品类和常见冷藏条件选择偏保守且合理的 shelfLifeDays。` +
       "常见参考：海鲜 1 天，生鲜肉类 2 天，叶菜、菌菇、豆制品和熟食 3 天，牛奶酸奶及多数水果 7 天，鸡蛋 21 天，冷冻食品 90 天；不完全匹配时结合具体食品合理判断。" +
-      "首次只用简洁文本列出每项食材的名称、品类、数量、建议购买日、建议保鲜天数和建议到期日，并询问用户是否确认；此时绝对不要调用 create_foods。用户可以用自然语言修改任意建议，收到修改后重新展示更新后的完整草稿，仍不要调用工具。只有用户明确回复确认、可以、就这样等同意表达后，才调用一次 create_foods，使用最终确认的 startDate 和 shelfLifeDays，不要填写 expiresOn。" +
+      "用户没说品类时根据食材名称推断；没说数量时可省略 quantityText，不要为此追问。用户明确提供的日期、数量或保鲜天数优先于默认推断。只有名称本身不明确、无法判断要添加什么时才追问。工具成功后简要说明已添加的食材及推断的品类、购买日、保鲜天数和到期日，并告知用户可继续对话修改。" +
       "所有 get/create/update/delete 工具都接收 1 到 25 项；尽量把同类操作合并成一次批量调用。update_foods 只在 patch 中填写需要修改的字段；如果修改 startDate 或 shelfLifeDays 后要重新计算到期日，同时传 expiresOn: null。" +
       "识别出准确删除对象后直接调用 delete_foods，不要先询问用户是否确认；删除确认完全由系统执行层处理，模型无需说明确认流程。" +
       "调用工具时不要输出正在查询、正在调用、准备删除等中间过程，也不要重复展示系统确认卡已经提供的待操作清单。" +

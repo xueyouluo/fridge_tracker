@@ -14,6 +14,7 @@ function scrubSensitiveAuthQuery() {
 
 scrubSensitiveAuthQuery();
 const state = { user: null, foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
@@ -711,6 +712,17 @@ async function createConversation() {
   const conversation = await api("/api/agent/conversations", { method: "POST", body: JSON.stringify({ title: "新对话" }) });
   state.activeConversationId = conversation.id;
   await loadConversations();
+  return conversation;
+}
+
+async function ensureOverviewConversation() {
+  const latest = state.conversations[0];
+  const updatedAt = Date.parse(latest?.updatedAt || "");
+  if (latest && Number.isFinite(updatedAt) && Date.now() - updatedAt <= OVERVIEW_CONVERSATION_REUSE_MS) {
+    state.activeConversationId = latest.id;
+    return latest;
+  }
+  return createConversation();
 }
 
 function displayName(user) {
@@ -1183,7 +1195,7 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
   const textarea = event.target.elements.content;
   const content = textarea.value.trim();
   if (!content) return;
-  if (!state.activeConversationId) await createConversation();
+  await ensureOverviewConversation();
   const button = event.target.querySelector("button");
   textarea.disabled = true;
   button.disabled = true;

@@ -644,14 +644,14 @@ body.modal-open { overflow: hidden; }
 .agent-messages { display: flex; flex-direction: column; gap: 12px; min-height: 480px; max-height: 620px; padding: 22px; overflow-y: auto; }
 .agent-empty { display: grid; place-items: center; align-content: center; gap: 8px; flex: 1; min-height: 360px; color: var(--muted); text-align: center; }
 .agent-empty strong { color: var(--ink); font-size: 18px; }
-.agent-message { max-width: 82%; }
-.agent-message > div:first-child { padding: 12px 14px; border-radius: 15px; line-height: 1.6; background: #f1f4ef; }
+.agent-message { min-width: 0; max-width: 82%; }
+.agent-message > div:first-child { min-width: 0; max-width: 100%; padding: 12px 14px; border-radius: 15px; line-height: 1.6; background: #f1f4ef; }
 .agent-message.user { align-self: flex-end; }
 .agent-message.user > div:first-child { color: #fff; background: var(--green); border-bottom-right-radius: 4px; }
 .agent-message.assistant { align-self: flex-start; }
 .agent-message.assistant > div:first-child { border-bottom-left-radius: 4px; }
 .agent-message.thinking { color: var(--muted); }
-.agent-markdown { overflow-wrap: anywhere; }
+.agent-markdown { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .agent-markdown > :first-child { margin-top: 0; }
 .agent-markdown > :last-child { margin-bottom: 0; }
 .agent-markdown p { margin: 0 0 10px; }
@@ -666,7 +666,7 @@ body.modal-open { overflow: hidden; }
 .agent-markdown pre { overflow-x: auto; margin: 10px 0; padding: 11px; border-radius: 9px; background: #e4e9e2; }
 .agent-markdown pre code { padding: 0; background: transparent; }
 .agent-markdown a { color: var(--green); text-decoration: underline; }
-.markdown-table-wrap { max-width: 100%; margin: 10px 0; overflow-x: auto; }
+.markdown-table-wrap { width: 100%; min-width: 0; max-width: 100%; margin: 10px 0; overflow-x: auto; }
 .agent-markdown table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .agent-markdown th, .agent-markdown td { padding: 7px 9px; border: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .agent-markdown th { background: #e7ece5; }
@@ -715,6 +715,7 @@ body.modal-open { overflow: hidden; }
 .ai-settings-form .ai-base-url { grid-column: 1 / -1; }
 .ai-settings-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; }
 .ai-settings-actions button { min-width: 130px; }
+.welcome, .welcome-agent, .overview-agent-result { min-width: 0; }
 .welcome-agent { display: grid; gap: 9px; margin-top: 24px; }
 .welcome-agent > strong { font-size: 14px; }
 .welcome-agent-form { display: grid; gap: 9px; }
@@ -724,7 +725,7 @@ body.modal-open { overflow: hidden; }
 }
 .welcome-agent-form .primary { width: 100%; height: 46px; }
 .welcome-agent-form.agent-disabled { opacity: .58; }
-.overview-agent-result .agent-message { max-width: 100%; }
+.overview-agent-result .agent-message { width: 100%; max-width: 100%; }
 .overview-agent-status:empty { display: none; }
 .welcome-manual-add { justify-self: start; margin-top: 9px; padding: 0; }
 .agent-quick-error { color: var(--red); font-size: 13px; }
