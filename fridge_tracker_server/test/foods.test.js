@@ -44,3 +44,26 @@ test("food search filters by keyword, category, status and expiration range with
   });
   assert.throws(() => foods.searchFoodItems(1, { expiresFrom: "2026-07-20", expiresTo: "2026-07-10" }), /must not be after/);
 });
+
+test("batch food CRUD validates the whole batch before an atomic write", () => {
+  const db = createTestDatabase();
+  const foods = createFoodService({ db });
+  const created = foods.createFoodItems(1, [
+    { name: "牛奶", expiresOn: "2026-07-20" },
+    { name: "苹果", expiresOn: "2026-07-21" }
+  ]);
+  assert.deepEqual(created.map((result) => result.item.name), ["牛奶", "苹果"]);
+  const ids = created.map((result) => result.item.id);
+  const updated = foods.updateFoodItems(1, ids.map((id, index) => ({ id, patch: { quantityText: `${index + 1} 份` } })));
+  assert.deepEqual(updated.map((result) => result.item.quantityText), ["1 份", "2 份"]);
+
+  assert.throws(() => foods.updateFoodItems(1, [
+    { id: ids[0], patch: { name: "不应保存" } },
+    { id: 999, patch: { name: "不存在" } }
+  ]), /not found/);
+  assert.equal(foods.getFoodItem(1, ids[0]).name, "牛奶");
+
+  const removed = foods.deleteFoodItems(1, ids);
+  assert.equal(removed.length, 2);
+  assert.deepEqual(foods.listFoodItems(1), []);
+});

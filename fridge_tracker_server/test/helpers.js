@@ -30,7 +30,8 @@ function createTestDatabase() {
     );
     CREATE TABLE agent_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
-      role TEXT NOT NULL, content TEXT NOT NULL, metadata_json TEXT, created_at TEXT NOT NULL
+      role TEXT NOT NULL, content TEXT NOT NULL, metadata_json TEXT,
+      protocol TEXT, payload_json TEXT, created_at TEXT NOT NULL
     );
     CREATE TABLE agent_pending_actions (
       id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

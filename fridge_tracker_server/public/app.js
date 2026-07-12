@@ -611,18 +611,29 @@ async function loadConversations() {
   $("#overviewAgentForm").classList.toggle("agent-disabled", !result.configured);
   $("#overviewAgentForm").querySelector("textarea").disabled = !result.configured;
   $("#overviewAgentForm").querySelector("button").disabled = !result.configured;
-  if (!state.activeConversationId && result.conversations.length) state.activeConversationId = result.conversations[0].id;
+  if (!result.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+    state.activeConversationId = result.conversations[0]?.id || null;
+  }
   renderConversations();
-  if (state.activeConversationId) await loadAgentMessages();
+  if (state.activeConversationId) {
+    await loadAgentMessages();
+  } else {
+    $("#agentMessages").innerHTML = `<div class="agent-empty"><strong>开始一段新对话</strong><span>点击“新对话”，或直接在下方输入你想做的事。</span></div>`;
+  }
 }
 
 function renderConversations() {
   const activeConversation = state.conversations.find((conversation) => conversation.id === state.activeConversationId);
   $("#activeConversationTitle").textContent = activeConversation?.title || "新对话";
   $("#conversations").innerHTML = state.conversations.length ? state.conversations.map((conversation) => `
-    <button type="button" class="conversation-item ${conversation.id === state.activeConversationId ? "active" : ""}" data-conversation="${escapeHtml(conversation.id)}">
-      <strong>${escapeHtml(conversation.title)}</strong><small>${escapeHtml(formatTime(conversation.updatedAt))}</small>
-    </button>
+    <div class="conversation-row ${conversation.id === state.activeConversationId ? "active" : ""}">
+      <button type="button" class="conversation-item ${conversation.id === state.activeConversationId ? "active" : ""}" data-conversation="${escapeHtml(conversation.id)}">
+        <strong>${escapeHtml(conversation.title)}</strong><small>${escapeHtml(formatTime(conversation.updatedAt))}</small>
+      </button>
+      <button type="button" class="conversation-delete" data-delete-conversation="${escapeHtml(conversation.id)}" aria-label="删除对话：${escapeHtml(conversation.title)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>
+      </button>
+    </div>
   `).join("") : `<p class="muted">点击“新对话”开始。</p>`;
 }
 
@@ -1085,6 +1096,28 @@ $("#conversationToggle").addEventListener("click", () => {
 });
 
 $("#conversations").addEventListener("click", async (event) => {
+  const remove = event.target.closest("[data-delete-conversation]");
+  if (remove) {
+    const conversation = state.conversations.find((item) => item.id === remove.dataset.deleteConversation);
+    const confirmed = await confirmDialog({
+      eyebrow: "删除历史对话",
+      title: `删除“${conversation?.title || "这段对话"}”？`,
+      body: "对话消息和未完成的确认操作都会一并删除，且无法恢复。",
+      confirmText: "删除",
+      tone: "danger"
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/agent/conversations/${encodeURIComponent(remove.dataset.deleteConversation)}`, { method: "DELETE" });
+      if (state.activeConversationId === remove.dataset.deleteConversation) state.activeConversationId = null;
+      await loadConversations();
+      setConversationListOpen(false);
+      toast("对话已删除");
+    } catch (error) {
+      toast(error.message);
+    }
+    return;
+  }
   const button = event.target.closest("[data-conversation]");
   if (!button) return;
   state.activeConversationId = button.dataset.conversation;

@@ -165,6 +165,8 @@ function initializeDatabase() {
       role TEXT NOT NULL,
       content TEXT NOT NULL,
       metadata_json TEXT,
+      protocol TEXT,
+      payload_json TEXT,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS agent_pending_actions (
@@ -185,7 +187,14 @@ function initializeDatabase() {
   `);
   migrateUsersTable();
   migrateDevicesTable();
+  migrateAgentMessagesTable();
   migrateAgentPendingActionsTable();
+}
+
+function migrateAgentMessagesTable() {
+  const columns = new Set(db.prepare("PRAGMA table_info(agent_messages)").all().map((column) => column.name));
+  if (!columns.has("protocol")) db.exec("ALTER TABLE agent_messages ADD COLUMN protocol TEXT");
+  if (!columns.has("payload_json")) db.exec("ALTER TABLE agent_messages ADD COLUMN payload_json TEXT");
 }
 
 function migrateAgentPendingActionsTable() {
@@ -753,6 +762,12 @@ async function routeApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/agent/conversations") {
     const body = await readJson(req);
     sendJson(res, 201, agentService.createConversation(user.id, body.title));
+    return true;
+  }
+
+  const conversationMatch = url.pathname.match(/^\/api\/agent\/conversations\/([^/]+)$/);
+  if (conversationMatch && req.method === "DELETE") {
+    sendJson(res, 200, { deleted: agentService.deleteConversation(user.id, decodeURIComponent(conversationMatch[1])) });
     return true;
   }
 

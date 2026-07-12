@@ -12,6 +12,16 @@ class FoodNotFoundError extends Error {
 }
 
 function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {} }) {
+  function normalizeBatchIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 25) {
+      throw new Error("ids must contain between 1 and 25 food IDs");
+    }
+    const normalized = ids.map(Number);
+    if (normalized.some((id) => !Number.isInteger(id) || id <= 0)) throw new Error("food IDs must be positive integers");
+    if (new Set(normalized).size !== normalized.length) throw new Error("food IDs must not contain duplicates");
+    return normalized;
+  }
+
   function decorate(row) {
     return decorateFood(row, localDateKey(timezone));
   }
@@ -83,6 +93,10 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND owner_id = ?").get(Number(id), ownerId);
     if (!row) throw new FoodNotFoundError();
     return decorate(row);
+  }
+
+  function getFoodItems(ownerId, ids) {
+    return normalizeBatchIds(ids).map((id) => getFoodItem(ownerId, id));
   }
 
   function createFoodItem(ownerId, input) {
@@ -158,7 +172,36 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     }
   }
 
-  return { listFoodItems, searchFoodItems, getFoodItem, createFoodItem, updateFoodItem, deleteFoodItem, validateActions, applyActions };
+  function createFoodItems(ownerId, items) {
+    if (!Array.isArray(items)) throw new Error("items must be an array");
+    return applyActions(ownerId, items.map((input) => ({ operation: "create", input })));
+  }
+
+  function updateFoodItems(ownerId, items) {
+    if (!Array.isArray(items)) throw new Error("items must be an array");
+    const ids = normalizeBatchIds(items.map((item) => item?.id));
+    const actions = items.map((item, index) => ({ operation: "update", id: ids[index], patch: item.patch || {} }));
+    return applyActions(ownerId, actions);
+  }
+
+  function deleteFoodItems(ownerId, ids) {
+    return applyActions(ownerId, normalizeBatchIds(ids).map((id) => ({ operation: "delete", id })));
+  }
+
+  return {
+    listFoodItems,
+    searchFoodItems,
+    getFoodItem,
+    getFoodItems,
+    createFoodItem,
+    createFoodItems,
+    updateFoodItem,
+    updateFoodItems,
+    deleteFoodItem,
+    deleteFoodItems,
+    validateActions,
+    applyActions
+  };
 }
 
 module.exports = { FoodNotFoundError, createFoodService };

@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260711-5"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260712-3"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -66,6 +66,22 @@ test("mobile agent view keeps chat full-height and collapses the conversation li
   assert.match(css, /\.agent-messages \{ min-height: 0; max-height: none; padding: 14px; \}/);
   assert.match(app, /document\.body\.classList\.toggle\("agent-view-active", target === "agent"\)/);
   assert.match(app, /function setConversationListOpen\(open\)/);
+});
+
+test("conversation history provides an owner-scoped delete interaction", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
+  assert.match(html, /styles\.css\?v=20260712-3/);
+  assert.match(app, /data-delete-conversation/);
+  assert.match(app, /删除历史对话/);
+  assert.match(app, /method: "DELETE"/);
+  assert.match(app, /state\.activeConversationId = result\.conversations\[0\]\?\.id \|\| null/);
+  assert.match(css, /\.conversation-delete/);
+  assert.match(css, /\.conversation-delete \{ opacity: 1; \}/);
+  assert.match(server, /conversationMatch && req\.method === "DELETE"/);
+  assert.match(server, /agentService\.deleteConversation\(user\.id/);
 });
 
 test("pending actions show details before execution and block duplicate clicks", () => {

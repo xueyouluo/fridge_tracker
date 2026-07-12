@@ -626,10 +626,18 @@ body.modal-open { overflow: hidden; }
 .conversation-panel, .chat-panel { min-height: 0; }
 .conversation-toggle { display: none; }
 .conversation-list { display: grid; gap: 7px; }
+.conversation-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 5px; align-items: stretch; }
 .conversation-item { display: grid; gap: 4px; width: 100%; padding: 11px; text-align: left; border: 0; border-radius: 12px; color: var(--ink); background: #f8faf7; }
 .conversation-item.active { color: var(--green); background: var(--green-soft); }
 .conversation-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-item small { color: var(--muted); font-size: 11px; }
+.conversation-delete {
+  display: grid; place-items: center; width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 10px;
+  color: var(--muted); background: transparent; opacity: 0; transition: opacity .15s, color .15s, background-color .15s;
+}
+.conversation-row:hover .conversation-delete, .conversation-delete:focus-visible { opacity: 1; }
+.conversation-delete:hover, .conversation-delete:focus-visible { color: var(--red); background: var(--red-soft); }
+.conversation-delete svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .chat-panel { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 0; overflow: hidden; }
 .agent-messages { display: flex; flex-direction: column; gap: 12px; min-height: 480px; max-height: 620px; padding: 22px; overflow-y: auto; }
 .agent-empty { display: grid; place-items: center; align-content: center; gap: 8px; flex: 1; min-height: 360px; color: var(--muted); text-align: center; }
@@ -821,6 +829,7 @@ body.modal-open { overflow: hidden; }
     box-shadow: 0 18px 42px rgba(19, 32, 29, .18);
   }
   .conversation-panel.mobile-open .conversation-list { display: grid; }
+  .conversation-delete { opacity: 1; }
   .chat-panel { height: 100%; border-radius: 18px; }
   .agent-compose { margin: 8px 10px 10px; }
   .welcome-agent { margin-top: 18px; }
