@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-本仓库是“鲜知贴”食材保鲜提醒器项目，包含服务端、双目标固件和 4.2 寸外壳 CAD：
+本仓库是“鲜知贴”食材保鲜提醒器项目，包含服务端、双目标固件和墨水屏外壳 CAD：
 
 - `fridge_tracker_server/`：Node.js 本地 H5 应用、API、SQLite 数据持久化，以及四色电子墨水屏帧渲染服务。
 - `fridge_tracker_server/src/`：服务入口、领域逻辑、渲染器、用户与账号辅助模块。
@@ -10,6 +10,7 @@
 - `fridge_tracker_server/test/`：基于 Node test runner 的领域逻辑、渲染器和用户行为测试。
 - `esp32_epaper_fridge_tracker/`：同时面向 ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的 Arduino 固件，支持 800x480 四色屏和 400x300 三色屏；板卡引脚和内存策略集中在 `BoardProfile.h`。
 - `models/ink_frame_v1/`：4.2 寸墨水屏外壳的 build123d 参数化源码、STEP 装配/零件、STL/3MF 打印文件、设计检查与审图记录；尺寸集中在 `ink_frame_common.py`。
+- `models/epaper_enclosure_7_2/`：7.2 寸墨水屏外壳的 STEP 装配、Bambu Studio 3MF 打印工程和实物预览；STEP 内含“显示屏”和“后壳”两个实体。
 
 ## 构建、测试与开发命令
 

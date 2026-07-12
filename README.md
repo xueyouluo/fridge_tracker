@@ -1,8 +1,8 @@
 # 鲜知贴
 
 多面板电子墨水屏食材保鲜提醒器项目，包含本地服务端、同时支持
-ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件，以及 4.2 寸设备外壳的
-参数化 CAD 模型。
+ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件，以及 4.2 寸和 7.2 寸
+设备外壳模型。
 
 ## 目录
 
@@ -11,6 +11,8 @@ ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件，以及 4.2 寸设备外
   四色屏及 E042A13 / GDEY042Z98 `400x300` 三色屏。
 - `models/ink_frame_v1/`：4.2 寸墨水屏外壳的 build123d 参数化源码、STEP
   装配/零件、STL/3MF 打印文件、设计检查和审图记录。
+- `models/epaper_enclosure_7_2/`：7.2 寸墨水屏外壳的 STEP 装配、Bambu Studio
+  3MF 打印工程和实物预览。
 
 ## 4.2 寸外壳模型
 
@@ -24,6 +26,13 @@ ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件，以及 4.2 寸设备外
 [模型目录中的设计方法](models/ink_frame_v1/README.md#设计方法全程由大模型完成建模)。
 其中记录了 CAD Skill 的安装方式、硬件测量方法、如何向 coding agent 描述螺丝或
 卡扣结构，以及通过多轮交互、Fusion 360 检查和实际打印逐步调整模型的完整流程。
+
+## 7.2 寸外壳模型
+
+7.2 寸外壳位于 `models/epaper_enclosure_7_2/`。使用 Fusion 360 查看或继续修改时
+打开 `冰箱显示屏.step`；准备打印时可直接用 Bambu Studio 打开
+`冰箱显示屏.3mf`。模型尺寸、文件结构、打印参数、实物预览及 MakerWorld 分享地址
+见 [7.2 寸外壳说明](models/epaper_enclosure_7_2/README.md)。
 
 ## 无需自己部署
 
