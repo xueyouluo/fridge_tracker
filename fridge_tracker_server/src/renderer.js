@@ -33,21 +33,22 @@ function statusColor(item) {
 
 function categoryIcon(category) {
   const icons = {
-    "水果": `<svg class="category-icon fruit" data-icon="fruit" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M16 9c8 0 11 4 10 10-1 6-7 11-10 12-3-1-9-6-10-12-1-6 2-10 10-10Z"/><path class="fill-black" d="m16 10-6-3 4-2 2 3 2-5 2 4 5-1-5 5Z"/><path d="M12 16h1m6-1h1m-5 7h1" /></svg>`,
-    "蔬菜": `<svg class="category-icon vegetable" data-icon="vegetable" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M16 30C4 26 5 11 16 4c11 7 12 22 0 26Z"/><path d="M16 29V8m0 11-6-5m6 9 7-7" /></svg>`,
-    "肉类": `<svg class="category-icon meat" data-icon="meat" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M21 4c6 0 9 5 8 10-1 6-7 10-12 8l-4 4-5-5 4-4C10 10 15 4 21 4Z"/><path class="fill-white" d="M13 20 9 24"/><path class="fill-white" d="M10 23c-2-2-5 1-3 3s4-1 5 0 4-1 2-3"/></svg>`,
-    "海鲜": `<svg class="category-icon seafood" data-icon="seafood" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M4 16c6-8 14-8 20-3l5-4v14l-5-4c-6 5-14 5-20-3Z"/><circle class="fill-black" cx="19.5" cy="14" r="1.5"/><path d="M10 12v8" /></svg>`,
-    "乳品": `<svg class="category-icon dairy" data-icon="dairy" viewBox="0 0 32 32" aria-hidden="true"><path class="fill-white" d="M10 5h11l3 6v18H8V11Z"/><path class="accent" d="M9 16h14v7H9Z"/><path d="M10 5v6h14M14 5v6" /></svg>`,
-    "蛋类": `<svg class="category-icon egg" data-icon="egg" viewBox="0 0 32 32" aria-hidden="true"><path class="fill-white" d="M16 3c6 0 11 13 10 19-1 5-5 8-10 8S7 27 6 22C5 16 10 3 16 3Z"/><circle class="accent" cx="16" cy="20" r="5"/></svg>`,
-    "饮料": `<svg class="category-icon drink" data-icon="drink" viewBox="0 0 32 32" aria-hidden="true"><path class="fill-white" d="M12 8h9l2 5v16H10V13Z"/><path class="accent" d="M11 18h11v8H11Z"/><path d="M12 8h9M14 4h7v4M19 4v-2" /></svg>`,
-    "豆制品": `<svg class="category-icon tofu" data-icon="tofu" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="m5 12 12-6 10 5-12 6Z"/><path class="fill-white" d="M5 12v12l10 4V17l12-6v12l-12 5"/><path d="M11 13h1m5-2h1m3 3h1" /></svg>`,
-    "熟食": `<svg class="category-icon cooked" data-icon="cooked" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M5 17h22c-1 8-5 11-11 11S6 25 5 17Z"/><path d="M4 17h24M8 14h16M13 10c-2-3 2-4 0-7m6 7c-2-3 2-4 0-7" /></svg>`,
-    "调味品": `<svg class="category-icon condiment" data-icon="condiment" viewBox="0 0 32 32" aria-hidden="true"><path class="fill-white" d="M12 8h8l3 6v15H9V14Z"/><path class="accent" d="M10 17h12v8H10Z"/><path d="M12 8V4h8v4M14 4V2h4" /></svg>`,
-    "冷冻": `<svg class="category-icon frozen" data-icon="frozen" viewBox="0 0 32 32" aria-hidden="true"><circle class="accent" cx="16" cy="16" r="13"/><path d="M16 4v24M6 10l20 12M6 22l20-12m-10-8-3 4m3-4 3 4m-13 2 5 1m-5-1 2 5m18-5-5 1m5-1-2 5M6 22l5-1m-5 1 2-5m18 5-5-1m5 1-2-5m-8 11-3-4m3 4 3-4"/></svg>`,
-    "甜点": `<svg class="category-icon dessert" data-icon="dessert" viewBox="0 0 32 32" aria-hidden="true"><path class="accent" d="M5 25h23L11 12Z"/><path class="fill-white" d="M8 21h15M10 17h8"/><path d="M11 12c1-4 7-4 8 0M15 8V5m0 0c3-2 5-1 5 1-2 1-4 1-5-1Z"/></svg>`,
-    "其他": `<svg class="category-icon other" data-icon="other" viewBox="0 0 32 32" aria-hidden="true"><path class="fill-white" d="M8 10h16l-2 19H10Z"/><path class="accent" d="M11 16h10v7H11Z"/><path d="M6 10h20M11 6h10" /></svg>`
+    "水果": ["fruit", `<path d="M16 12c-2.2-3-7-2.5-8 2.2-1 5.3 3.7 10.7 8 12.3 4.3-1.6 9-7 8-12.3-1-4.7-5.8-5.2-8-2.2Z"/><path d="M16 11c.2-3.5 2.2-5.4 5.7-5.5-.4 3.2-2.4 5.2-5.7 5.5Zm0 0-3.2-3.2"/>`],
+    "蔬菜": ["vegetable", `<path d="M13 12 22 9l-3 9-6 8-4-4 4-10Z"/><path d="m13 12-3-4m5 3 1-5m1 4 4-3M11 20l3 3"/>`],
+    "肉类": ["meat", `<path d="M20.5 7.5c4.5 0 7 3.8 5.5 7.7-1.3 3.6-5.2 5.5-9.1 4.4l-4.4 4.3-4.4-4.4 4.3-4.3c-1-3.8 2.5-7.7 8.1-7.7Z"/><circle cx="20.5" cy="13.5" r="2.8"/><path d="M10.5 22c-1.5-1.4-3.8.8-2.3 2.3 1.2 1.2 2.2-.2 3.3.9 1.5 1.5 3.7-.8 2.3-2.3"/>`],
+    "海鲜": ["seafood", `<path d="M6 16c4.5-5.2 10.8-6.3 16.2-2.2L27 10v12l-4.8-3.8C16.8 22.3 10.5 21.2 6 16Z"/><circle class="fill-black" cx="18.8" cy="14.8" r="1.2"/><path d="M10 13.2v5.6"/>`],
+    "乳品": ["dairy", `<path d="M11 9h9.5l3.5 5v12H9V14l2-5Z"/><path d="M11 9V6h8v3m-8 0 4 5h9M15 14v12m3-7h3"/>`],
+    "蛋类": ["egg", `<path d="M16 6c4 0 8.5 9.6 8.5 14.1 0 4.2-3.4 6.4-8.5 6.4s-8.5-2.2-8.5-6.4C7.5 15.6 12 6 16 6Z"/><circle cx="16" cy="20" r="3.8"/>`],
+    "饮料": ["drink", `<path d="M11 10h11l2 5v11H9V15l2-5Z"/><path d="M11 10V7h10v3m-7-3V5h7m-8 11h7m-7 4h7"/>`],
+    "豆制品": ["tofu", `<path d="m7 12 10-5 9 4.5-10 5L7 12Zm0 0v10l9 4.5v-10m10-5v10l-10 5"/><path d="m11 13.8 2 1m5-4 2-1m1 4 2-1"/>`],
+    "熟食": ["cooked", `<path d="M7 17h18c-.8 6.2-3.9 9-9 9s-8.2-2.8-9-9Zm-2 0h22M10 14h12"/><path d="M13 11c-2-2.2 2-3.5 0-5.5m6 5.5c-2-2.2 2-3.5 0-5.5"/>`],
+    "调味品": ["condiment", `<path d="M11 11h10l2 4v11H9V15l2-4Zm1 0V7h8v4m-6-4V5h4"/><path d="M12 17h8v5h-8z"/>`],
+    "冷冻": ["frozen", `<path d="M16 6v20M7.3 11l17.4 10M7.3 21l17.4-10M16 6l-2.5 2.5M16 6l2.5 2.5M7.3 11l3.4.9M7.3 11l.9 3.4m16.5-3.4-3.4.9m3.4-.9-.9 3.4M7.3 21l3.4-.9M7.3 21l.9-3.4m16.5 3.4-3.4-.9m3.4.9-.9-3.4M16 26l-2.5-2.5M16 26l2.5-2.5"/>`],
+    "甜点": ["dessert", `<path d="M8 24h16L11 13l-3 11Zm2.5-5h8m-9 3h12"/><path d="M11 13c.7-3 3.1-4.5 6.2-3.7 1.3-2.2 4.9-1.6 5.3 1.2.4 2.4-1.3 3.5-3.6 3.5"/><circle class="fill-black" cx="18" cy="9" r="1"/>`],
+    "其他": ["other", `<path d="M8 12h16l-1.5 14h-13L8 12Zm-2 0h20M11 12V8h10v4"/><path d="M13 17h6m-6 4h6"/>`]
   };
-  return icons[String(category || "").trim()] || icons["其他"];
+  const [name, glyph] = icons[String(category || "").trim()] || icons["其他"];
+  return `<svg class="category-icon ${name}" data-icon="${name}" viewBox="0 0 32 32" aria-hidden="true"><rect class="accent icon-badge" x="1.5" y="1.5" width="29" height="29" rx="8"/>${glyph}</svg>`;
 }
 
 function renderTriColorDashboardHtml(items, generatedAt, options, config, orientation) {
