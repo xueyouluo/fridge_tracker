@@ -10,6 +10,7 @@
 #include <esp_heap_caps.h>
 #include <esp_sleep.h>
 
+#include "BoardProfile.h"
 #include "Config.h"
 
 #if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
@@ -20,19 +21,6 @@
 #include <Fonts/FreeMonoBold9pt7b.h>
 
 #include "ProvisioningPage.h"
-
-// Pin labels follow the photographed ESP32-C3 Super Mini board silkscreen.
-// Avoid GPIO20/GPIO21; on some Super Mini boards wires near the antenna can
-// make the provisioning AP difficult to discover.
-#define EPD_CS    7
-#define EPD_DC    3
-#define EPD_RST   5
-#define EPD_BUSY  10
-
-#define EPD_SCK   4
-#define EPD_MOSI  6
-// The e-paper adapter is write-only in this project, so MISO is not wired.
-#define EPD_MISO  -1
 
 #if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
 GxEPD2_3C<GxEPD2_420c_GDEY042Z98, DISPLAY_PAGE_HEIGHT> display(
@@ -72,7 +60,11 @@ WebServer portalServer(80);
 DNSServer dnsServer;
 DeviceSettings settings;
 #if FRIDGE_PANEL_TYPE != FRIDGE_PANEL_GDEY042Z98
+#if FRIDGE_USE_CHUNKED_4C_DRAW
 uint8_t imageChunk[DISPLAY_DRAW_CHUNK_BYTES];
+#else
+uint8_t* imageData = nullptr;
+#endif
 #endif
 bool resumeAfterSave = false;
 bool portalRoutesConfigured = false;
@@ -116,7 +108,9 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   delay(SERIAL_BOOT_DELAY_MS);
   Serial.println();
-  Serial.print("=== XianZhi Tie C3 e-paper boot: ");
+  Serial.print("=== XianZhi Tie e-paper boot: ");
+  Serial.print(FRIDGE_BOARD_NAME);
+  Serial.print(" / ");
   Serial.print(PANEL_PROFILE);
   Serial.println(" ===");
   bool timerWakeup = wokeFromTimer();
@@ -135,6 +129,19 @@ void setup() {
     sleepForNextCheck(true);
   }
   logHeap("Heap after FFat mount");
+
+#if FRIDGE_PANEL_TYPE != FRIDGE_PANEL_GDEY042Z98 && !FRIDGE_USE_CHUNKED_4C_DRAW
+  imageData = static_cast<uint8_t*>(ps_malloc(DISPLAY_IMAGE_BYTES));
+  if (!imageData) {
+    imageData = static_cast<uint8_t*>(malloc(DISPLAY_IMAGE_BYTES));
+  }
+  if (!imageData) {
+    drawStatusText("Memory failed", "Frame allocation", "Check PSRAM setting");
+    display.hibernate();
+    sleepForNextCheck(true);
+  }
+  logHeap("Heap after full-frame allocation");
+#endif
 
   loadSettings();
   bool provisioningHandled = false;
@@ -294,10 +301,15 @@ uint32_t configuredPortalTimeoutMs() {
 
 bool configureWifiRadio() {
   WiFi.setSleep(false);
+#if FRIDGE_LIMIT_WIFI_TX_POWER
   bool powerSet = WiFi.setTxPower(WIFI_POWER_8_5dBm);
   Serial.print("Wi-Fi reduced TX power: ");
   Serial.println(powerSet ? "set" : "failed");
   return powerSet;
+#else
+  Serial.println("Wi-Fi TX power: board default");
+  return true;
+#endif
 }
 
 bool startProvisioningAccessPoint(const String& apName) {
@@ -822,7 +834,7 @@ bool drawStoredImage() {
   free(blackPlane);
   free(redPlane);
   return true;
-#else
+#elif FRIDGE_USE_CHUNKED_4C_DRAW
   display.init();
   display.setRotation(0);
   logHeap("Heap before chunked drawNative");
@@ -845,6 +857,19 @@ bool drawStoredImage() {
   file.close();
   logHeap("Heap before full refresh");
   display.refresh(false);
+  return true;
+#else
+  size_t count = file.read(imageData, DISPLAY_IMAGE_BYTES);
+  file.close();
+  if (count != DISPLAY_IMAGE_BYTES) {
+    setError("Storage failed", "Frame read error", "Try again later");
+    return false;
+  }
+
+  display.init();
+  display.setRotation(0);
+  logHeap("Heap before full-frame drawNative");
+  display.drawNative(imageData, nullptr, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, false, false, false);
   return true;
 #endif
 }

@@ -26,14 +26,11 @@ static const char* PANEL_PROFILE = "gdem075f52";
   #error "Unsupported FRIDGE_PANEL_TYPE"
 #endif
 
-static const char* DEVICE_NAME = "XianZhi Tie C3";
+static const char* DEVICE_NAME = FRIDGE_DEVICE_NAME;
 static const char* PROVISIONING_AP_PREFIX = "XianZhiTie-";
 static const char* DEFAULT_API_BASE_URL = "http://192.168.0.2:8788";
 static const uint8_t PROVISIONING_AP_CHANNEL = 1;
 static const uint8_t PROVISIONING_AP_MAX_CLIENTS = 4;
-
-// Hold the BOOT button while resetting to clear setup data and reopen the portal.
-static const int CONFIG_BUTTON_PIN = 0;
 
 #if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
 static const uint16_t DISPLAY_WIDTH = 400;
@@ -48,9 +45,13 @@ static const uint16_t DISPLAY_BYTES_PER_ROW = (DISPLAY_WIDTH + 3) / 4;
 static const size_t DISPLAY_PLANE_BYTES = 0;
 static const size_t DISPLAY_IMAGE_BYTES = size_t(DISPLAY_BYTES_PER_ROW) * DISPLAY_HEIGHT;
 #endif
-// ESP32-C3 Super Mini normally has no PSRAM. Keep the GxEPD2 page buffer small
-// so Wi-Fi, FFat, and chunked native-frame drawing fit in internal SRAM.
+// C3 keeps a small page buffer in internal SRAM. S3 retains the larger buffer
+// used by the original PSRAM-backed firmware.
+#if FRIDGE_BOARD_ESP32C3
 static const uint16_t DISPLAY_PAGE_HEIGHT = 30;
+#else
+static const uint16_t DISPLAY_PAGE_HEIGHT = DISPLAY_HEIGHT / 2;
+#endif
 static const uint16_t DISPLAY_DRAW_CHUNK_ROWS = 20;
 static const size_t DISPLAY_DRAW_CHUNK_BYTES = size_t(DISPLAY_BYTES_PER_ROW) * DISPLAY_DRAW_CHUNK_ROWS;
 

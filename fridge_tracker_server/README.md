@@ -177,7 +177,7 @@ GET  /api/device/frame.png?panel=gdem075f52&orientation=portrait
 ```
 
 `orientation` 可取 `portrait` 或 `landscape`；未提供时默认使用
-`portrait`。C3 配网页可保存设备实际使用的方向。
+`portrait`。统一固件的配网页可保存设备实际使用的方向。
 
 设备拉取帧时使用以下请求头：
 
@@ -240,7 +240,6 @@ npm test
 ```
 
 H5 页面可直接使用自动生成的示例食材查看效果。配套设备固件位于
-`../esp32_s3_epaper_fridge_tracker_4color` 和
-`../esp32_c3_epaper_fridge_tracker_4color`：
+`../esp32_epaper_fridge_tracker`，同一份代码支持 ESP32-C3 和 ESP32-S3：
 固件通过配网页面配置 Wi-Fi、服务地址和一次性配对码，注册或接收设备 token，请求 `frame.bin`，
 处理 `ETag`，并按面板协议调用 `drawNative()` 或 `drawImage()`。
