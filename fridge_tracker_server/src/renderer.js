@@ -93,7 +93,7 @@ function renderTriColorDashboardHtml(items, generatedAt, options, config, orient
     .badge.red { background:var(--red); color:var(--white); border-color:var(--red); }
     .badge.expiring { color:var(--red); border-color:var(--red); }
     .list { height:${isPortrait ? "270px" : "190px"}; display:grid; grid-template-rows:repeat(${rowLimit}, 1fr); }
-    .food { position:relative; display:grid; ${isPortrait ? "grid-template-columns:28px 1fr auto; grid-template-rows:20px 14px; gap:0 5px; padding:2px 0 5px;" : "grid-template-columns:27px 105px 1fr 69px; align-items:center; gap:7px; padding:1px 0 5px;"} border-top:1px solid var(--black); }
+    .food { position:relative; display:grid; ${isPortrait ? "grid-template-columns:28px 1fr auto; grid-template-rows:20px 14px; gap:0 5px; padding:2px 0 5px;" : "grid-template-columns:27px 105px 1fr 82px; align-items:center; gap:7px; padding:1px 0 5px;"} border-top:1px solid var(--black); }
     .food .icon { grid-column:1; ${isPortrait ? "grid-row:1 / 3; align-self:center;" : ""} }
     .category-icon { display:block; width:22px; height:22px; fill:none; stroke:var(--black); stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
     .category-icon .accent { fill:var(--white); }
@@ -102,7 +102,7 @@ function renderTriColorDashboardHtml(items, generatedAt, options, config, orient
     .food.red .category-icon .accent { fill:var(--red); }
     .food .name { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-weight:850; font-size:${isPortrait ? "14px" : "14px"}; ${isPortrait ? "grid-column:2; grid-row:1; line-height:19px;" : "grid-column:2;"} }
     .food .meta { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:${isPortrait ? "9px" : "10px"}; font-weight:600; ${isPortrait ? "grid-column:2 / 4; grid-row:2; line-height:13px;" : "grid-column:3;"} }
-    .food .days { font-size:${isPortrait ? "13px" : "13px"}; font-weight:850; text-align:right; ${isPortrait ? "grid-column:3; grid-row:1; line-height:19px;" : "grid-column:4;"} }
+    .food .days { white-space:nowrap; font-size:${isPortrait ? "13px" : "13px"}; font-weight:850; text-align:right; ${isPortrait ? "grid-column:3; grid-row:1; line-height:19px;" : "grid-column:4;"} }
     .food .bar { position:absolute; left:${isPortrait ? "33px" : "139px"}; right:0; bottom:2px; height:3px; border:1px solid var(--black); }
     .food .bar span { display:block; height:100%; background:var(--black); }
     .food.red .name, .food.red .days { color:var(--red); }

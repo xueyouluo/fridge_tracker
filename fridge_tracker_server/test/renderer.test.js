@@ -45,6 +45,7 @@ test("dashboard summary shows expired and expiring counts together", () => {
 test("4.2-inch tri-color layouts use compact row limits and no yellow ink", () => {
   const items = Array.from({ length: 9 }, (_, index) => ({
     ...food(index + 1),
+    daysRemaining: index === 0 ? -11 : index + 1,
     status: index === 0 ? "expired" : index === 1 ? "expiring" : "normal"
   }));
   const portrait = renderDashboardHtml(items, "2026/05/25 10:30", { panel: "gdey042z98", orientation: "portrait" });
@@ -59,6 +60,9 @@ test("4.2-inch tri-color layouts use compact row limits and no yellow ink", () =
   assert.doesNotMatch(portrait, /class="name">食材 8<\/div>/);
   assert.match(landscape, /width=400/);
   assert.match(landscape, /显示最需处理的 5 项/);
+  assert.match(landscape, /class="days">已过期 11 天<\/div>/);
+  assert.match(landscape, /grid-template-columns:27px 105px 1fr 82px/);
+  assert.match(landscape, /\.food \.days \{ white-space:nowrap;/);
   assert.doesNotMatch(landscape, /class="name">食材 6<\/div>/);
   assert.match(portrait, /红色：已过期 \/ 3 天内到期/);
   assert.doesNotMatch(portrait, /--yellow|var\(--yellow\)/);
