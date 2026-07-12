@@ -3,12 +3,13 @@
 #include <Arduino.h>
 
 // Select exactly one physical panel before compiling.
-#define FRIDGE_PANEL_GDEM075F52 0
-#define FRIDGE_PANEL_GDEM0397F81 1
-#define FRIDGE_PANEL_GDEY042Z98 2
+#define FRIDGE_PANEL_GDEM075F52 0  // 7.5-inch, 800x480, black/white/yellow/red four-color
+#define FRIDGE_PANEL_GDEM0397F81 1 // 3.97-inch, 800x480, black/white/yellow/red four-color
+#define FRIDGE_PANEL_GDEY042Z98 2  // 4.2-inch, 400x300, black/white/red tri-color (E042A13)
 
 // Change only the value on this line when using a different panel.
-#define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEY042Z98
+// You should change this value depending on the panel you are using.
+#define FRIDGE_PANEL_TYPE FRIDGE_PANEL_GDEM075F52
 
 #if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEM0397F81
 static const char* PANEL_PROFILE = "gdem0397f81";
