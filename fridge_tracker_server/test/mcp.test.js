@@ -22,6 +22,9 @@ test("MCP exposes scoped food CRUD tools", async () => {
   assert.equal(created.isError, undefined);
   const listed = await client.callTool({ name: "list_foods", arguments: {} });
   assert.match(listed.content[0].text, /豆腐/);
+  const filtered = await client.callTool({ name: "list_foods", arguments: { keyword: "不存在" } });
+  assert.equal(filtered.structuredContent.total, 0);
+  assert.deepEqual(filtered.structuredContent.items, []);
   await client.close();
   await server.close();
 });

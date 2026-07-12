@@ -2,14 +2,50 @@
 
 const crypto = require("node:crypto");
 
-const PANEL_PROFILES = new Set(["gdem075f52", "gdem0397f81"]);
+const PANEL_CONFIGS = Object.freeze({
+  gdem075f52: Object.freeze({
+    id: "gdem075f52",
+    label: "GDEM075F52 7.5 寸四色",
+    width: 800,
+    height: 480,
+    colorMode: "four-color",
+    frameFormat: "2bpp-bwyr",
+    frameBytes: 96000,
+    landscapeRows: 8,
+    portraitRows: 9
+  }),
+  gdem0397f81: Object.freeze({
+    id: "gdem0397f81",
+    label: "GDEM0397F81 3.97 寸四色",
+    width: 800,
+    height: 480,
+    colorMode: "four-color",
+    frameFormat: "2bpp-bwyr",
+    frameBytes: 96000,
+    landscapeRows: 8,
+    portraitRows: 9
+  }),
+  gdey042z98: Object.freeze({
+    id: "gdey042z98",
+    label: "GDEY042Z98 4.2 寸三色",
+    width: 400,
+    height: 300,
+    colorMode: "tri-color",
+    frameFormat: "dual-1bpp-bwr",
+    frameBytes: 30000,
+    landscapeRows: 5,
+    portraitRows: 7
+  })
+});
+const PANEL_PROFILES = new Set(Object.keys(PANEL_CONFIGS));
 const DISPLAY_ORIENTATIONS = new Set(["portrait", "landscape"]);
 const DEFAULT_DISPLAY_ORIENTATION = "portrait";
+const DEFAULT_PANEL_PROFILE = "gdem075f52";
 const LANDSCAPE_DISPLAY_ROWS = 8;
 const PORTRAIT_DISPLAY_ROWS = 9;
-const DISPLAY_WIDTH = 800;
-const DISPLAY_HEIGHT = 480;
-const FRAME_BYTES = (DISPLAY_WIDTH * DISPLAY_HEIGHT) / 4;
+const DISPLAY_WIDTH = PANEL_CONFIGS[DEFAULT_PANEL_PROFILE].width;
+const DISPLAY_HEIGHT = PANEL_CONFIGS[DEFAULT_PANEL_PROFILE].height;
+const FRAME_BYTES = PANEL_CONFIGS[DEFAULT_PANEL_PROFILE].frameBytes;
 
 function localDateKey(timezone = "Asia/Shanghai", now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -108,14 +144,19 @@ function panelProfile(value) {
   return panel;
 }
 
+function panelConfig(value = DEFAULT_PANEL_PROFILE) {
+  return PANEL_CONFIGS[panelProfile(value)];
+}
+
 function displayOrientation(value) {
   const orientation = String(value || DEFAULT_DISPLAY_ORIENTATION).toLowerCase();
   if (!DISPLAY_ORIENTATIONS.has(orientation)) throw new Error("unsupported display orientation");
   return orientation;
 }
 
-function maxDisplayRows(orientation) {
-  return displayOrientation(orientation) === "portrait" ? PORTRAIT_DISPLAY_ROWS : LANDSCAPE_DISPLAY_ROWS;
+function maxDisplayRows(orientation, panel = DEFAULT_PANEL_PROFILE) {
+  const config = panelConfig(panel);
+  return displayOrientation(orientation) === "portrait" ? config.portraitRows : config.landscapeRows;
 }
 
 function frameSnapshotKey(items, todayKey, panel, orientation = DEFAULT_DISPLAY_ORIENTATION) {
@@ -130,11 +171,13 @@ function frameSnapshotKey(items, todayKey, panel, orientation = DEFAULT_DISPLAY_
 
 module.exports = {
   DEFAULT_DISPLAY_ORIENTATION,
+  DEFAULT_PANEL_PROFILE,
   DISPLAY_HEIGHT,
   DISPLAY_ORIENTATIONS,
   DISPLAY_WIDTH,
   FRAME_BYTES,
   LANDSCAPE_DISPLAY_ROWS,
+  PANEL_CONFIGS,
   PANEL_PROFILES,
   PORTRAIT_DISPLAY_ROWS,
   addDays,
@@ -145,6 +188,8 @@ module.exports = {
   localDateKey,
   maxDisplayRows,
   normalizeFoodInput,
+  panelConfig,
   panelProfile,
+  parseDate,
   sortFoods
 };

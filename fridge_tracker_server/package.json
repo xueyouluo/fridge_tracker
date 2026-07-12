@@ -8,11 +8,12 @@
     "start": "node --no-warnings=ExperimentalWarning src/server.js",
     "dev": "node --no-warnings=ExperimentalWarning --watch src/server.js",
     "install:browsers": "playwright install chromium",
-    "check": "node --check src/server.js && node --check src/domain.js && node --check src/renderer.js && node --check src/users.js && node --check src/pairing.js && node --check src/foods.js && node --check src/accessTokens.js && node --check src/aiSettings.js && node --check src/mcp.js && node --check src/agent.js && node --check public/app.js",
+    "check": "node --check src/server.js && node --check src/domain.js && node --check src/renderer.js && node --check src/users.js && node --check src/pairing.js && node --check src/foods.js && node --check src/accessTokens.js && node --check src/aiSettings.js && node --check src/mcp.js && node --check src/agent.js && node --check public/markdown.js && node --check public/app.js",
     "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "markdown-it": "14.3.0",
     "openai": "^6.46.0",
     "playwright": "^1.60.0",
     "sharp": "^0.34.3",

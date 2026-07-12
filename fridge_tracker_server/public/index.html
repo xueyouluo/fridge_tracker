@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>鲜知贴</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=20260711-5">
 </head>
 <body>
   <header class="topbar">
@@ -56,7 +56,7 @@
         <h2 id="authTitle">登录鲜知贴</h2>
         <p id="authHint" class="muted">进入你的本地家庭工作台</p>
         <form id="loginForm" class="form login-form">
-          <label>账号或邮箱<input name="login" autocomplete="username" value="admin" required></label>
+          <label>账号或邮箱<input name="login" autocomplete="username" placeholder="输入账号或邮箱" required></label>
           <label>密码<input name="password" type="password" autocomplete="current-password" placeholder="输入配置的密码" required></label>
           <button class="primary" type="submit">进入工作台</button>
         </form>
@@ -153,8 +153,14 @@
         </div>
         <section id="devicePreviewSection" class="device-preview-section">
           <div class="device-section-title">
-            <div><p class="eyebrow">四色电子纸</p><h2>屏幕画面</h2></div>
+            <div><p id="previewEyebrow" class="eyebrow">四色电子纸</p><h2>屏幕画面</h2></div>
             <div class="preview-tools">
+              <label class="inline-select">面板
+                <select id="previewPanel">
+                  <option value="gdem075f52" selected>7.5 / 3.97 寸四色</option>
+                  <option value="gdey042z98">4.2 寸三色</option>
+                </select>
+              </label>
               <label class="inline-select">方向
                 <select id="previewOrientation">
                   <option value="portrait" selected>竖屏（设备默认）</option>
@@ -174,10 +180,10 @@
             </section>
             <aside class="panel display-notes">
               <h2>显示说明</h2>
-              <div class="note"><strong>9 项</strong><span>竖屏展示上限</span></div>
+              <div class="note"><strong id="previewRowLimit">9 项</strong><span id="previewRowLabel">竖屏展示上限</span></div>
               <div class="note"><strong>30 分钟</strong><span>设备常规定时检查</span></div>
-              <div class="note"><strong>96 KB</strong><span>四色原生帧协议</span></div>
-              <p class="muted">红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。</p>
+              <div class="note"><strong id="previewFrameBytes">96 KB</strong><span id="previewFrameLabel">四色原生帧协议</span></div>
+              <p id="previewDescription" class="muted">红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。</p>
             </aside>
           </div>
         </section>
@@ -244,8 +250,15 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
           <button id="newConversation" class="primary" type="button">新对话</button>
         </div>
         <div class="agent-layout">
-          <aside class="panel conversation-panel">
-            <div class="section-head"><h2>对话</h2><span id="agentStatus" class="muted"></span></div>
+          <aside id="conversationPanel" class="panel conversation-panel">
+            <div class="section-head conversation-head">
+              <h2>对话</h2>
+              <button id="conversationToggle" class="conversation-toggle" type="button" aria-expanded="false" aria-controls="conversations">
+                <span><small>当前对话</small><strong id="activeConversationTitle">新对话</strong></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+              </button>
+              <span id="agentStatus" class="muted"></span>
+            </div>
             <div id="conversations" class="conversation-list"></div>
           </aside>
           <section class="panel chat-panel">
@@ -253,8 +266,10 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
               <div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>
             </div>
             <form id="agentForm" class="agent-compose">
-              <textarea name="content" maxlength="4000" rows="3" placeholder="输入食材查询或管理指令…" required></textarea>
-              <button class="primary" type="submit">发送</button>
+              <textarea name="content" maxlength="4000" rows="1" placeholder="给鲜知贴发送消息" required></textarea>
+              <button class="agent-send" type="submit" aria-label="发送消息">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+              </button>
             </form>
           </section>
         </div>
@@ -382,6 +397,8 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
     </div>
     <p id="message" class="message" role="status"></p>
   </main>
-  <script src="/app.js"></script>
+  <script src="/vendor/markdown-it.js?v=14.3.0"></script>
+  <script src="/markdown.js?v=20260711-3"></script>
+  <script src="/app.js?v=20260711-5"></script>
 </body>
 </html>

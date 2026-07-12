@@ -1,6 +1,8 @@
 "use strict";
 
-const { decorateFood, localDateKey, normalizeFoodInput, sortFoods } = require("./domain");
+const { addDays, decorateFood, localDateKey, normalizeFoodInput, parseDate, sortFoods } = require("./domain");
+
+const FOOD_STATUSES = new Set(["expired", "expiring", "normal"]);
 
 class FoodNotFoundError extends Error {
   constructor() {
@@ -17,6 +19,64 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
   function listFoodItems(ownerId) {
     const rows = db.prepare("SELECT * FROM food_items WHERE owner_id = ?").all(ownerId);
     return sortFoods(rows.map(decorate));
+  }
+
+  function searchFoodItems(ownerId, filters = {}) {
+    const keyword = String(filters.keyword || "").trim().toLocaleLowerCase().slice(0, 100);
+    const category = String(filters.category || "").trim().slice(0, 20);
+    const status = String(filters.status || "").trim();
+    if (status && !FOOD_STATUSES.has(status)) throw new Error("unsupported food status");
+    const expiresFrom = filters.expiresFrom ? parseDate(filters.expiresFrom, "expiresFrom") : null;
+    const expiresTo = filters.expiresTo ? parseDate(filters.expiresTo, "expiresTo") : null;
+    if (expiresFrom && expiresTo && expiresFrom > expiresTo) throw new Error("expiresFrom must not be after expiresTo");
+    const limit = filters.limit === undefined ? 20 : Number(filters.limit);
+    const offset = filters.offset === undefined ? 0 : Number(filters.offset);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("limit must be an integer from 1 to 100");
+    if (!Number.isInteger(offset) || offset < 0) throw new Error("offset must be a non-negative integer");
+
+    const today = localDateKey(timezone);
+    const expiringThrough = addDays(today, 3);
+    const conditions = ["owner_id = ?"];
+    const params = [ownerId];
+    if (category) {
+      conditions.push("category = ?");
+      params.push(category);
+    }
+    if (status === "expired") {
+      conditions.push("expires_on < ?");
+      params.push(today);
+    } else if (status === "expiring") {
+      conditions.push("expires_on >= ? AND expires_on <= ?");
+      params.push(today, expiringThrough);
+    } else if (status === "normal") {
+      conditions.push("expires_on > ?");
+      params.push(expiringThrough);
+    }
+    if (expiresFrom) {
+      conditions.push("expires_on >= ?");
+      params.push(expiresFrom);
+    }
+    if (expiresTo) {
+      conditions.push("expires_on <= ?");
+      params.push(expiresTo);
+    }
+    if (keyword) {
+      const escaped = keyword.replace(/[\\%_]/g, "\\$&");
+      conditions.push("(name LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\' OR quantity_text LIKE ? ESCAPE '\\')");
+      params.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
+    }
+
+    const where = conditions.join(" AND ");
+    const total = db.prepare(`SELECT COUNT(*) AS count FROM food_items WHERE ${where}`).get(...params).count;
+    const rows = db.prepare(`
+      SELECT * FROM food_items
+      WHERE ${where}
+      ORDER BY CASE WHEN expires_on < ? THEN 0 WHEN expires_on <= ? THEN 1 ELSE 2 END,
+        expires_on ASC, updated_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, today, expiringThrough, limit, offset);
+    const items = rows.map(decorate);
+    return { items, total, offset, limit, hasMore: offset + items.length < total };
   }
 
   function getFoodItem(ownerId, id) {
@@ -98,7 +158,7 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     }
   }
 
-  return { listFoodItems, getFoodItem, createFoodItem, updateFoodItem, deleteFoodItem, validateActions, applyActions };
+  return { listFoodItems, searchFoodItems, getFoodItem, createFoodItem, updateFoodItem, deleteFoodItem, validateActions, applyActions };
 }
 
 module.exports = { FoodNotFoundError, createFoodService };

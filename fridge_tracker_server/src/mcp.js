@@ -10,7 +10,17 @@ const foodInputSchema = {
   quantityText: z.string().max(30).optional().describe("Human-readable quantity, for example 1 盒"),
   startDate: z.string().nullable().optional().describe("Purchase or production date in YYYY-MM-DD"),
   shelfLifeDays: z.number().int().min(0).max(3650).nullable().optional(),
-  expiresOn: z.string().nullable().optional().describe("Expiration date in YYYY-MM-DD; required unless startDate and shelfLifeDays are supplied")
+  expiresOn: z.string().nullable().optional().describe("Expiration date in YYYY-MM-DD; required unless startDate and shelfLifeDays are supplied. Set null on update to recalculate from startDate and shelfLifeDays")
+};
+
+const foodListSchema = {
+  keyword: z.string().max(100).optional().describe("Fuzzy match against name, category, or quantity"),
+  category: z.string().max(20).optional().describe("Exact category match"),
+  status: z.enum(["expired", "expiring", "normal"]).optional(),
+  expiresFrom: z.string().optional().describe("Inclusive expiration lower bound in YYYY-MM-DD"),
+  expiresTo: z.string().optional().describe("Inclusive expiration upper bound in YYYY-MM-DD"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size; defaults to 20"),
+  offset: z.number().int().min(0).optional().describe("Page offset; defaults to 0")
 };
 
 function toolResult(value) {
@@ -32,10 +42,10 @@ function createMcpServer(foodService, user) {
   };
 
   server.registerTool("list_foods", {
-    description: "List all food items owned by the authenticated user, ordered by expiration urgency.",
-    inputSchema: {},
+    description: "Filter food items owned by the authenticated user. Results are ordered by expiration urgency and paginated.",
+    inputSchema: foodListSchema,
     annotations: { readOnlyHint: true, openWorldHint: false }
-  }, run(() => ({ items: foodService.listFoodItems(user.id) })));
+  }, run((filters) => foodService.searchFoodItems(user.id, filters)));
 
   server.registerTool("get_food", {
     description: "Get one food item owned by the authenticated user.",

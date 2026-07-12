@@ -10,6 +10,8 @@ const {
   displayOrientation,
   maxDisplayRows,
   normalizeFoodInput,
+  panelConfig,
+  panelProfile,
   sortFoods
 } = require("../src/domain");
 
@@ -17,11 +19,33 @@ test("four-color native frame size matches the two supported 800x480 panels", ()
   assert.equal(FRAME_BYTES, 96000);
 });
 
+test("panel profiles describe both four-color and 4.2-inch tri-color frames", () => {
+  assert.equal(panelProfile("GDEY042Z98"), "gdey042z98");
+  assert.deepEqual(
+    { ...panelConfig("gdey042z98") },
+    {
+      id: "gdey042z98",
+      label: "GDEY042Z98 4.2 寸三色",
+      width: 400,
+      height: 300,
+      colorMode: "tri-color",
+      frameFormat: "dual-1bpp-bwr",
+      frameBytes: 30000,
+      landscapeRows: 5,
+      portraitRows: 7
+    }
+  );
+  assert.equal(panelConfig("gdem075f52").frameBytes, 96000);
+  assert.throws(() => panelProfile("unknown"), /unsupported panel profile/);
+});
+
 test("portrait is the default display orientation and increases visible rows", () => {
   assert.equal(DEFAULT_DISPLAY_ORIENTATION, "portrait");
   assert.equal(displayOrientation(), "portrait");
   assert.equal(maxDisplayRows("portrait"), 9);
   assert.equal(maxDisplayRows("landscape"), 8);
+  assert.equal(maxDisplayRows("portrait", "gdey042z98"), 7);
+  assert.equal(maxDisplayRows("landscape", "gdey042z98"), 5);
   assert.throws(() => displayOrientation("upside-down"), /unsupported display orientation/);
 });
 

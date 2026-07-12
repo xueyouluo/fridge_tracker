@@ -1,13 +1,13 @@
 # 鲜知贴
 
-四色电子墨水屏食材保鲜提醒器项目，包含本地服务端、ESP32-S3 稳定版固件和
+多面板电子墨水屏食材保鲜提醒器项目，包含本地服务端、ESP32-S3 稳定版固件和
 ESP32-C3 Super Mini 实验版固件。
 
 ## 目录
 
-- `fridge_tracker_server/`：Node.js 本地 H5、API、SQLite 数据和四色屏帧生成服务。
+- `fridge_tracker_server/`：Node.js 本地 H5、API、SQLite 数据及四色/三色屏帧生成服务。
 - `esp32_s3_epaper_fridge_tracker_4color/`：ESP32-S3 N16R8 + `800x480` 黑/白/黄/红四色电子墨水屏固件。
-- `esp32_c3_epaper_fridge_tracker_4color/`：ESP32-C3 Super Mini + 同款 `800x480` 四色屏的高成功率移植版固件。
+- `esp32_c3_epaper_fridge_tracker_4color/`：ESP32-C3 Super Mini 固件，支持 `800x480` 四色屏及 E042A13 / GDEY042Z98 `400x300` 三色屏。
 
 ## 本地启动服务端
 

@@ -8,10 +8,12 @@ const { DatabaseSync } = require("node:sqlite");
 const {
   FRAME_BYTES,
   DEFAULT_DISPLAY_ORIENTATION,
+  PANEL_CONFIGS,
   addDays,
   displayOrientation,
   frameSnapshotKey,
   localDateKey,
+  panelConfig,
   panelProfile
 } = require("./domain");
 const { createFoodService } = require("./foods");
@@ -174,6 +176,7 @@ function initializeDatabase() {
       expires_at TEXT NOT NULL,
       resolved_at TEXT,
       resolution TEXT,
+      resume_json TEXT,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id);
@@ -182,6 +185,12 @@ function initializeDatabase() {
   `);
   migrateUsersTable();
   migrateDevicesTable();
+  migrateAgentPendingActionsTable();
+}
+
+function migrateAgentPendingActionsTable() {
+  const columns = new Set(db.prepare("PRAGMA table_info(agent_pending_actions)").all().map((column) => column.name));
+  if (!columns.has("resume_json")) db.exec("ALTER TABLE agent_pending_actions ADD COLUMN resume_json TEXT");
 }
 
 function migrateUsersTable() {
@@ -547,7 +556,20 @@ function sendPairingCodeError(res, result) {
 
 async function routeApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
-    sendJson(res, 200, { ok: true, timezone: config.timezone, frameBytes: FRAME_BYTES, agentMode: "per-user" });
+    const panelProfiles = Object.fromEntries(Object.entries(PANEL_CONFIGS).map(([id, panel]) => [id, {
+      width: panel.width,
+      height: panel.height,
+      colorMode: panel.colorMode,
+      frameFormat: panel.frameFormat,
+      frameBytes: panel.frameBytes
+    }]));
+    sendJson(res, 200, {
+      ok: true,
+      timezone: config.timezone,
+      frameBytes: FRAME_BYTES,
+      panelProfiles,
+      agentMode: "per-user"
+    });
     return true;
   }
 
@@ -652,7 +674,9 @@ async function routeApi(req, res, url) {
     }
     const data = url.pathname.endsWith(".png") ? frame.png : frame.frame;
     const type = url.pathname.endsWith(".png") ? "image/png" : "application/octet-stream";
-    sendBuffer(res, 200, data, type, { ETag: frame.etag, "X-Panel-Profile": panel, "X-Display-Orientation": orientation });
+    const headers = { ETag: frame.etag, "X-Panel-Profile": panel, "X-Display-Orientation": orientation };
+    if (!url.pathname.endsWith(".png")) headers["X-Frame-Format"] = panelConfig(panel).frameFormat;
+    sendBuffer(res, 200, data, type, headers);
     return true;
   }
 
@@ -747,7 +771,7 @@ async function routeApi(req, res, url) {
   const agentActionMatch = url.pathname.match(/^\/api\/agent\/actions\/([^/]+)\/(confirm|cancel)$/);
   if (agentActionMatch && req.method === "POST") {
     const id = decodeURIComponent(agentActionMatch[1]);
-    const result = agentActionMatch[2] === "confirm" ? agentService.confirmAction(user.id, id) : agentService.cancelAction(user.id, id);
+    const result = agentActionMatch[2] === "confirm" ? await agentService.confirmAction(user.id, id) : await agentService.cancelAction(user.id, id);
     sendJson(res, 200, result);
     return true;
   }
@@ -798,6 +822,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/app.js") {
       servePublic(res, "app.js", "text/javascript; charset=utf-8");
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/markdown.js") {
+      servePublic(res, "markdown.js", "text/javascript; charset=utf-8");
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/vendor/markdown-it.js") {
+      sendBuffer(res, 200, fs.readFileSync(path.join(ROOT, "node_modules", "markdown-it", "dist", "markdown-it.min.js")), "text/javascript; charset=utf-8");
       return;
     }
     if (req.method === "GET" && url.pathname === "/styles.css") {

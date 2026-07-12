@@ -47,6 +47,11 @@ const char PROVISIONING_PAGE[] PROGMEM = R"HTML(
         <label for="interval">检查间隔（分钟）</label>
         <input id="interval" name="interval" type="number" min="5" max="1440" step="1" value="%INTERVAL%" required>
         <p class="hint">设备按此间隔连接服务端检查新画面；只有内容变化时才刷新墨水屏。可设置 5–1440 分钟。手动开机后的配置热点不会超过这个间隔。</p>
+        <label for="orientation">显示方向</label>
+        <select id="orientation" name="orientation">
+          <option value="portrait"%PORTRAIT_SELECTED%>竖屏</option>
+          <option value="landscape"%LANDSCAPE_SELECTED%>横屏</option>
+        </select>
         <label class="check" for="forceRefresh">
           <input id="forceRefresh" name="force_refresh" type="checkbox" value="1"%FORCE_REFRESH_CHECKED%>
           调试：每次检查都刷新屏幕

@@ -36,7 +36,7 @@ function createTestDatabase() {
       id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
       actions_json TEXT NOT NULL, summary TEXT NOT NULL, expires_at TEXT NOT NULL,
-      resolved_at TEXT, resolution TEXT, created_at TEXT NOT NULL
+      resolved_at TEXT, resolution TEXT, resume_json TEXT, created_at TEXT NOT NULL
     );
   `);
   db.prepare("INSERT INTO users VALUES (?, ?, ?, ?, ?)").run(1, "one", "one@example.com", "One", "member");

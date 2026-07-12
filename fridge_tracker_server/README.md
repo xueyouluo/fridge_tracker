@@ -1,11 +1,11 @@
 # 鲜知贴服务端
 
-“鲜知贴”四色电子墨水屏食材保鲜提醒器的本地 MVP 服务：
+“鲜知贴”电子墨水屏食材保鲜提醒器的本地 MVP 服务：
 
 - 提供带导航栏的响应式 bento H5 工作台，将概览、食材管理、设备、助手和用户管理拆分为独立视图；设备绑定与墨水屏预览集中在同一页面。
 - 使用 Node.js 内置的 `node:sqlite` 保存本地数据。
 - 按上海时区计算到期状态，并优先展示最紧急的食材。
-- 以 `480x800` 竖屏作为默认展示方向，并向设备提供 `800x480` 四色原生帧接口及 `ETag`。
+- 支持 `800x480` 四色屏和 `400x300` 黑白红三色屏，默认使用竖屏布局，并向设备提供原生帧及 `ETag`。
 - 使用 Playwright 与 `sharp` 将 HTML 画面转换为帧数据；中文排版在服务端完成，而不是交给 ESP32。
 - 提供带个人访问令牌认证的 Streamable HTTP MCP，让 Codex 等 Agent 管理当前用户的食材。
 - 可选启用内置文字 Agent，通过多轮对话查询或修改食材；删除和批量变更必须二次确认。
@@ -61,7 +61,7 @@ cp config.example.json config.json
 
 未配置个人模型的账号仍可使用其他功能，概览和助手页面会提示用户前往自己的设置页面。官方 OpenAI 地址优先使用 Responses API；兼容地址使用 Chat Completions，并在接口明确不支持时回退。
 
-助手支持食材查询、单项新增和单项修改。删除以及一次包含多项写入的操作会生成五分钟有效的确认卡，只有当前登录用户确认后才会在一个数据库事务中执行。第一期只支持文字输入，不申请麦克风权限，也不上传音频。
+助手支持食材查询、单项新增和单项修改，并以安全 Markdown 显示标题、列表、表格、引用和代码。删除以及一次包含多项写入的操作会由系统执行层生成五分钟有效的确认卡，卡片展示食材名称、分类、数量和到期日；模型不会先询问确认，也不会重复提交相同操作。只有当前登录用户确认后才会在一个数据库事务中执行，随后模型以不带工具的收尾调用汇报结果。第一期只支持文字输入，不申请麦克风权限，也不上传音频。
 
 ## MCP 接入
 
@@ -120,12 +120,12 @@ ipconfig getifaddr en0
 - 添加食材时，可以直接填写到期日，也可以填写购买/生产日期和保鲜天数。
 - 预置分类包含水果、蔬菜、肉类、海鲜、乳品、蛋类、饮料、豆制品、熟食、调味品、冷冻、甜点和其他，并在屏幕上显示对应简图。
 - `daysRemaining < 0`：已过期，使用红色显示。
-- `0 <= daysRemaining <= 3`：即将到期，使用黄色显示。
+- `0 <= daysRemaining <= 3`：即将到期；四色屏使用黄色，三色屏使用红色，并保留粗体和下划线区分。
 - 其余食材使用黑色显示。
 - 进度条表示到期紧急度：今天到期至剩余 7 天分别使用 `100%`、`88%`、`76%`、`64%`、`52%`、`40%`、`28%`、`20%`；超过 7 天后按剩余天数反比例缩短，最低保留 `8%` 可见长度。
-- 显示排序为已过期优先，其次按最近到期时间排列；默认竖屏展示前 9 项，横屏对照布局展示前 8 项，H5 保留全部记录。
+- 显示排序为已过期优先，其次按最近到期时间排列；四色屏竖/横屏展示 9/8 项，4.2 寸三色屏竖/横屏展示 7/5 项，H5 保留全部记录。
 - 日期计算统一使用 `Asia/Shanghai` 时区。
-- 竖屏渲染使用 `480 x 800` 的逻辑画布，打包时旋转回面板原生 `800 x 480` 坐标，因此设备端帧大小和刷屏协议不变。
+- 竖屏渲染使用交换宽高后的逻辑画布，打包时旋转回面板原生坐标；横屏直接使用面板原生方向。
 
 ## 接口
 
@@ -144,6 +144,7 @@ DELETE /api/foods/:id
 GET    /api/devices
 POST   /api/devices/pairing-codes
 GET    /api/display/preview?panel=gdem075f52&orientation=portrait
+GET    /api/display/preview?panel=gdey042z98&orientation=landscape
 GET    /api/display/frame.png?panel=gdem075f52&orientation=portrait
 GET    /api/access-tokens
 POST   /api/access-tokens
@@ -171,11 +172,12 @@ POST /mcp    # MCP Streamable HTTP，Authorization: Bearer xzt_...
 POST /api/device/register
 GET  /api/device/frame.bin?panel=gdem075f52&orientation=portrait
 GET  /api/device/frame.bin?panel=gdem0397f81&orientation=portrait
+GET  /api/device/frame.bin?panel=gdey042z98&orientation=portrait
 GET  /api/device/frame.png?panel=gdem075f52&orientation=portrait
 ```
 
 `orientation` 可取 `portrait` 或 `landscape`；未提供时默认使用
-`portrait`，因此现有固件无需更改拉帧 URL 即可切换到竖屏画面。
+`portrait`。C3 配网页可保存设备实际使用的方向。
 
 设备拉取帧时使用以下请求头：
 
@@ -184,7 +186,7 @@ Authorization: Bearer <device-token>
 If-None-Match: "<previous-etag>"
 ```
 
-两种支持的屏幕共用同一份原生帧数据协议：
+两块四色屏共用以下原生帧协议：
 
 ```text
 大小: 96,000 bytes
@@ -193,6 +195,21 @@ If-None-Match: "<previous-etag>"
 打包方式: 每字节 4 个像素
 像素编码: 黑色 00，白色 01，黄色 10，红色 11
 ```
+
+4.2 寸 `GDEY042Z98` 使用双 1-bit 平面：
+
+```text
+大小: 30,000 bytes
+原生分辨率: 400 x 300
+默认逻辑布局: 300 x 400 竖屏
+前 15,000 bytes: 黑色平面
+后 15,000 bytes: 红色平面
+白色像素: 两个平面对应位均为 1
+```
+
+二进制响应通过 `X-Frame-Format` 返回 `2bpp-bwyr` 或
+`dual-1bpp-bwr`。`GET /api/health` 的 `panelProfiles` 字段同时列出各面板的
+尺寸、颜色模式、帧格式和帧长度。
 
 使用内置演示设备在本地请求帧：
 
@@ -223,6 +240,7 @@ npm test
 ```
 
 H5 页面可直接使用自动生成的示例食材查看效果。配套设备固件位于
-`../esp32_s3_epaper_fridge_tracker_4color`：
+`../esp32_s3_epaper_fridge_tracker_4color` 和
+`../esp32_c3_epaper_fridge_tracker_4color`：
 固件通过配网页面配置 Wi-Fi、服务地址和一次性配对码，注册或接收设备 token，请求 `frame.bin`，
-处理 `ETag`，并将变化后的帧缓冲发送给 `display.drawNative()`。
+处理 `ETag`，并按面板协议调用 `drawNative()` 或 `drawImage()`。

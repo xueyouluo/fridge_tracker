@@ -1,6 +1,18 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
+const { renderMarkdown } = window.XianZhiMarkdown;
+
+function scrubSensitiveAuthQuery() {
+  const url = new URL(window.location.href);
+  const hadSensitiveAuthQuery = url.searchParams.has("login") || url.searchParams.has("password");
+  if (!hadSensitiveAuthQuery) return;
+  url.searchParams.delete("login");
+  url.searchParams.delete("password");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+scrubSensitiveAuthQuery();
 const state = { user: null, foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
 const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
@@ -136,6 +148,7 @@ function setView(view, options = {}) {
   const normalized = view === "display" ? "devices" : view;
   const target = views.has(normalized) ? normalized : "overview";
   state.view = target;
+  document.body.classList.toggle("agent-view-active", target === "agent");
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.viewPanel === target);
   });
@@ -604,6 +617,8 @@ async function loadConversations() {
 }
 
 function renderConversations() {
+  const activeConversation = state.conversations.find((conversation) => conversation.id === state.activeConversationId);
+  $("#activeConversationTitle").textContent = activeConversation?.title || "新对话";
   $("#conversations").innerHTML = state.conversations.length ? state.conversations.map((conversation) => `
     <button type="button" class="conversation-item ${conversation.id === state.activeConversationId ? "active" : ""}" data-conversation="${escapeHtml(conversation.id)}">
       <strong>${escapeHtml(conversation.title)}</strong><small>${escapeHtml(formatTime(conversation.updatedAt))}</small>
@@ -611,12 +626,36 @@ function renderConversations() {
   `).join("") : `<p class="muted">点击“新对话”开始。</p>`;
 }
 
-function renderAgentEvent(event) {
+function setConversationListOpen(open) {
+  const expanded = window.matchMedia("(max-width: 640px)").matches && open;
+  $("#conversationPanel").classList.toggle("mobile-open", expanded);
+  $("#conversationToggle").setAttribute("aria-expanded", String(expanded));
+}
+
+function renderPendingDetail(detail) {
+  const actionLabels = { create: "新增", update: "修改", delete: "删除" };
+  const metadata = [detail.category, detail.quantityText, detail.expiresOn ? `到期 ${detail.expiresOn}` : ""].filter(Boolean);
+  return `<li><strong>${escapeHtml(actionLabels[detail.operation] || "变更")}「${escapeHtml(detail.name || "食材")}」</strong>
+    ${metadata.length ? `<span>${metadata.map(escapeHtml).join(" · ")}</span>` : ""}
+  </li>`;
+}
+
+function renderAgentEvent(event, seenPendingIds = new Set()) {
   if (event.pendingAction) {
     const pending = event.pendingAction;
+    const pendingKey = pending.resolution ? pending.id : JSON.stringify(pending.actions || pending.summary);
+    if (seenPendingIds.has(pendingKey)) return "";
+    seenPendingIds.add(pendingKey);
+    if (pending.resolution) {
+      return `<div class="agent-result ${pending.resolution === "cancelled" ? "cancelled" : ""}">${pending.resolution === "confirmed" ? "操作已确认执行" : "操作已取消"}</div>`;
+    }
+    const details = pending.details || [];
+    const onlyDeletes = details.length > 0 && details.every((detail) => detail.operation === "delete");
+    const confirmationTitle = onlyDeletes ? `确认删除以下 ${details.length} 项食材？` : "确认执行以下变更？";
     return `<article class="pending-action" data-pending-card="${escapeHtml(pending.id)}">
-      <strong>需要确认</strong><span>${escapeHtml(pending.summary)}</span>
-      <small>有效期至 ${escapeHtml(formatTime(pending.expiresAt))}</small>
+      <strong>${escapeHtml(confirmationTitle)}</strong><span>${escapeHtml(pending.summary)}</span>
+      ${details.length ? `<ul class="pending-details">${details.map(renderPendingDetail).join("")}</ul>` : ""}
+      <small>确认后才会执行 · 有效期至 ${escapeHtml(formatTime(pending.expiresAt))}</small>
       <div><button type="button" class="quiet" data-agent-cancel="${escapeHtml(pending.id)}">取消</button><button type="button" class="primary" data-agent-confirm="${escapeHtml(pending.id)}">确认执行</button></div>
     </article>`;
   }
@@ -624,19 +663,23 @@ function renderAgentEvent(event) {
   return "";
 }
 
-function renderAgentMessage(message) {
+function renderAgentMessage(message, seenPendingIds = new Set()) {
   const events = message.metadata?.events || [];
+  const content = message.content
+    ? `<div class="${message.role === "assistant" ? "agent-markdown" : "agent-plain"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content).replaceAll("\n", "<br>")}</div>`
+    : "";
   return `<article class="agent-message ${message.role}">
-    <div>${escapeHtml(message.content).replaceAll("\n", "<br>")}</div>
-    ${events.map(renderAgentEvent).join("")}
+    ${content}
+    ${events.map((event) => renderAgentEvent(event, seenPendingIds)).join("")}
   </article>`;
 }
 
 async function loadAgentMessages() {
   if (!state.activeConversationId) return;
   const result = await api(`/api/agent/conversations/${encodeURIComponent(state.activeConversationId)}/messages`);
+  const seenPendingIds = new Set();
   $("#agentMessages").innerHTML = result.messages.length
-    ? result.messages.map(renderAgentMessage).join("")
+    ? result.messages.map((message) => renderAgentMessage(message, seenPendingIds)).join("")
     : `<div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>`;
   $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
 }
@@ -697,19 +740,36 @@ function renderPairingCode(result) {
 }
 
 function refreshPreview() {
+  const panel = $("#previewPanel").value;
   const orientation = $("#previewOrientation").value;
   screenFrame.classList.toggle("portrait", orientation === "portrait");
   screenFrame.classList.toggle("landscape", orientation === "landscape");
   updatePreviewScale();
   window.requestAnimationFrame(updatePreviewScale);
-  screenPreview.src = `/api/display/preview?panel=gdem075f52&orientation=${encodeURIComponent(orientation)}&t=${Date.now()}`;
+  const isTriColor = panel === "gdey042z98";
+  const rowLimit = isTriColor
+    ? (orientation === "portrait" ? 7 : 5)
+    : (orientation === "portrait" ? 9 : 8);
+  $("#previewEyebrow").textContent = isTriColor ? "三色电子纸" : "四色电子纸";
+  $("#previewRowLimit").textContent = `${rowLimit} 项`;
+  $("#previewRowLabel").textContent = `${orientation === "portrait" ? "竖屏" : "横屏"}展示上限`;
+  $("#previewFrameBytes").textContent = isTriColor ? "30 KB" : "96 KB";
+  $("#previewFrameLabel").textContent = isTriColor ? "三色双平面协议" : "四色原生帧协议";
+  $("#previewDescription").textContent = isTriColor
+    ? "已过期和三天内到期都使用红色；临期项目同时保留粗体和下划线，便于区分。内容改变后，设备下次唤醒时刷新画面。"
+    : "红色表示已过期，黄色表示三天内到期。内容改变后，设备下次唤醒时刷新画面。";
+  screenPreview.src = `/api/display/preview?panel=${encodeURIComponent(panel)}&orientation=${encodeURIComponent(orientation)}&t=${Date.now()}`;
 }
 
 function updatePreviewScale() {
+  const panel = $("#previewPanel").value;
   const orientation = $("#previewOrientation").value;
-  const native = orientation === "portrait"
-    ? { width: 480, height: 800 }
+  const panelSize = panel === "gdey042z98"
+    ? { width: 400, height: 300 }
     : { width: 800, height: 480 };
+  const native = orientation === "portrait"
+    ? { width: panelSize.height, height: panelSize.width }
+    : panelSize;
   const container = screenFrame.parentElement;
   if (!container || container.clientWidth < 50) {
     window.requestAnimationFrame(updatePreviewScale);
@@ -884,6 +944,7 @@ foodForm.elements.shelfLifeDays.addEventListener("input", () => {
 });
 $("#refreshPreview").addEventListener("click", refreshPreview);
 $("#previewOrientation").addEventListener("change", refreshPreview);
+$("#previewPanel").addEventListener("change", refreshPreview);
 window.addEventListener("resize", () => {
   if (state.view === "devices") updatePreviewScale();
 });
@@ -1014,14 +1075,30 @@ $("#accessTokens").addEventListener("click", async (event) => {
   }
 });
 
-$("#newConversation").addEventListener("click", () => createConversation().catch((error) => toast(error.message)));
+$("#newConversation").addEventListener("click", () => {
+  setConversationListOpen(false);
+  createConversation().catch((error) => toast(error.message));
+});
+
+$("#conversationToggle").addEventListener("click", () => {
+  setConversationListOpen($("#conversationToggle").getAttribute("aria-expanded") !== "true");
+});
 
 $("#conversations").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-conversation]");
   if (!button) return;
   state.activeConversationId = button.dataset.conversation;
   renderConversations();
+  setConversationListOpen(false);
   await loadAgentMessages();
+});
+
+$("#agentMessages").addEventListener("click", () => setConversationListOpen(false));
+window.addEventListener("resize", () => {
+  if (!window.matchMedia("(max-width: 640px)").matches) setConversationListOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setConversationListOpen(false);
 });
 
 $("#agentForm").addEventListener("submit", async (event) => {
@@ -1034,6 +1111,7 @@ $("#agentForm").addEventListener("submit", async (event) => {
   textarea.disabled = true;
   button.disabled = true;
   textarea.value = "";
+  resizeAgentTextarea(textarea);
   $("#agentMessages").insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="agentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
   $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
   try {
@@ -1076,25 +1154,72 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
 });
 
 async function handleAgentActionClick(event) {
+  const actionContainer = event.currentTarget;
   const confirm = event.target.closest("[data-agent-confirm]");
   const cancel = event.target.closest("[data-agent-cancel]");
   if (!confirm && !cancel) return;
+  const card = (confirm || cancel).closest(".pending-action");
+  if (card?.dataset.processing === "true") return;
   const id = confirm?.dataset.agentConfirm || cancel.dataset.agentCancel;
+  const buttons = card ? [...card.querySelectorAll("button")] : [confirm || cancel];
+  const actionButton = confirm || cancel;
+  const originalLabel = actionButton.textContent;
+  if (card) {
+    card.dataset.processing = "true";
+    card.setAttribute("aria-busy", "true");
+  }
+  buttons.forEach((button) => { button.disabled = true; });
+  actionButton.textContent = confirm ? "正在执行并生成回复…" : "正在取消…";
   try {
-    await api(`/api/agent/actions/${encodeURIComponent(id)}/${confirm ? "confirm" : "cancel"}`, { method: "POST", body: "{}" });
+    const result = await api(`/api/agent/actions/${encodeURIComponent(id)}/${confirm ? "confirm" : "cancel"}`, { method: "POST", body: "{}" });
     await Promise.all([loadAgentMessages(), loadFoods()]);
     if (state.view === "devices") refreshPreview();
-    if (event.currentTarget.id === "overviewAgentResult") {
-      event.currentTarget.innerHTML = `<div class="agent-result">${confirm ? "操作已确认执行" : "操作已取消"}</div>`;
+    if (actionContainer.id === "overviewAgentResult") {
+      actionContainer.innerHTML = result.message
+        ? renderAgentMessage(result.message)
+        : `<div class="agent-result">${confirm ? "操作已确认执行" : "操作已取消"}</div>`;
     }
-    toast(confirm ? "操作已确认执行" : "操作已取消");
+    const completedText = result.alreadyResolved
+      ? (result.resolution === "confirmed" ? "操作已经执行，无需重复确认" : "操作已经取消")
+      : (confirm ? "操作已确认执行" : "操作已取消");
+    toast(completedText);
   } catch (error) {
+    if (card) {
+      delete card.dataset.processing;
+      card.removeAttribute("aria-busy");
+    }
+    buttons.forEach((button) => { button.disabled = false; });
+    actionButton.textContent = originalLabel;
     toast(error.message);
   }
 }
 
 $("#agentMessages").addEventListener("click", handleAgentActionClick);
 $("#overviewAgentResult").addEventListener("click", handleAgentActionClick);
+
+function enableEnterToSubmit(form) {
+  const textarea = form.querySelector("textarea");
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!textarea.disabled) form.requestSubmit();
+  });
+}
+
+function resizeAgentTextarea(textarea) {
+  textarea.style.height = "40px";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 128)}px`;
+}
+
+function enableAgentTextareaAutoGrow(form) {
+  const textarea = form.querySelector("textarea");
+  textarea.addEventListener("input", () => resizeAgentTextarea(textarea));
+  resizeAgentTextarea(textarea);
+}
+
+enableEnterToSubmit($("#agentForm"));
+enableEnterToSubmit($("#overviewAgentForm"));
+enableAgentTextareaAutoGrow($("#agentForm"));
 
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

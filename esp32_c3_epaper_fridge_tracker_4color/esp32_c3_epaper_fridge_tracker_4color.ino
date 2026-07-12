@@ -10,10 +10,15 @@
 #include <esp_heap_caps.h>
 #include <esp_sleep.h>
 
+#include "Config.h"
+
+#if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
+#include <GxEPD2_3C.h>
+#else
 #include <GxEPD2_4C.h>
+#endif
 #include <Fonts/FreeMonoBold9pt7b.h>
 
-#include "Config.h"
 #include "ProvisioningPage.h"
 
 // Pin labels follow the photographed ESP32-C3 Super Mini board silkscreen.
@@ -29,7 +34,11 @@
 // The e-paper adapter is write-only in this project, so MISO is not wired.
 #define EPD_MISO  -1
 
-#if FRIDGE_USE_GDEM0397F81
+#if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
+GxEPD2_3C<GxEPD2_420c_GDEY042Z98, DISPLAY_PAGE_HEIGHT> display(
+  GxEPD2_420c_GDEY042Z98(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
+);
+#elif FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEM0397F81
 GxEPD2_4C<GxEPD2_397c_GDEM0397F81, DISPLAY_PAGE_HEIGHT> display(
   GxEPD2_397c_GDEM0397F81(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
 );
@@ -47,6 +56,7 @@ struct DeviceSettings {
   String serial;
   String deviceToken;
   String etag;
+  String orientation;
   uint32_t checkIntervalMinutes;
   bool forceRefreshEveryCheck;
 };
@@ -61,7 +71,9 @@ Preferences prefs;
 WebServer portalServer(80);
 DNSServer dnsServer;
 DeviceSettings settings;
+#if FRIDGE_PANEL_TYPE != FRIDGE_PANEL_GDEY042Z98
 uint8_t imageChunk[DISPLAY_DRAW_CHUNK_BYTES];
+#endif
 bool resumeAfterSave = false;
 bool portalRoutesConfigured = false;
 unsigned long resumeAt = 0;
@@ -104,7 +116,9 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   delay(SERIAL_BOOT_DELAY_MS);
   Serial.println();
-  Serial.println("=== XianZhi Tie C3 four-color e-paper boot ===");
+  Serial.print("=== XianZhi Tie C3 e-paper boot: ");
+  Serial.print(PANEL_PROFILE);
+  Serial.println(" ===");
   bool timerWakeup = wokeFromTimer();
   Serial.print("Wake source: ");
   Serial.println(timerWakeup ? "deep-sleep timer" : "power-on/reset");
@@ -225,12 +239,16 @@ bool loadSettings() {
   settings.serial = prefs.getString("serial", defaultSerial());
   settings.deviceToken = prefs.getString("token", "");
   settings.etag = prefs.getString("etag", "");
+  settings.orientation = prefs.getString("orient", "portrait");
   settings.checkIntervalMinutes = prefs.getUInt("interval", DEFAULT_CHECK_INTERVAL_MINUTES);
   settings.forceRefreshEveryCheck = prefs.getBool("force", false);
   prefs.end();
   if (settings.checkIntervalMinutes < MIN_CHECK_INTERVAL_MINUTES ||
       settings.checkIntervalMinutes > MAX_CHECK_INTERVAL_MINUTES) {
     settings.checkIntervalMinutes = DEFAULT_CHECK_INTERVAL_MINUTES;
+  }
+  if (settings.orientation != "portrait" && settings.orientation != "landscape") {
+    settings.orientation = "portrait";
   }
   return settingsReady();
 }
@@ -351,6 +369,7 @@ bool runProvisioningPortal(uint32_t timeoutMs, bool showInstructions) {
       String newPassword = portalServer.arg("password");
       String newPairing = portalServer.arg("pairing");
       String newToken = portalServer.arg("token");
+      String newOrientation = portalServer.arg("orientation");
       uint32_t newIntervalMinutes = portalServer.arg("interval").toInt();
       bool newForceRefreshEveryCheck = portalServer.hasArg("force_refresh");
       newSsid.trim();
@@ -359,6 +378,10 @@ bool runProvisioningPortal(uint32_t timeoutMs, bool showInstructions) {
       newPairing.replace(" ", "");
       newPairing.replace("-", "");
       newPairing.toUpperCase();
+      if (newOrientation != "portrait" && newOrientation != "landscape") {
+        portalServer.send(400, "text/plain; charset=utf-8", "Display orientation is invalid.");
+        return;
+      }
 
       bool identityChanged = newApi != settings.apiBaseUrl || newPairing != settings.pairingCode;
       bool keepsRegisteredToken = !settings.deviceToken.isEmpty() && !identityChanged && newToken.isEmpty();
@@ -385,6 +408,7 @@ bool runProvisioningPortal(uint32_t timeoutMs, bool showInstructions) {
       prefs.putString("pair", newPairing);
       prefs.putUInt("interval", newIntervalMinutes);
       prefs.putBool("force", newForceRefreshEveryCheck);
+      prefs.putString("orient", newOrientation);
       prefs.remove("prov");
       prefs.putString("serial", settings.serial);
       if (!newToken.isEmpty()) {
@@ -454,6 +478,8 @@ String provisioningPageHtml() {
   page.replace("%PAIRING%", htmlEscape(settings.pairingCode));
   page.replace("%INTERVAL%", String(settings.checkIntervalMinutes));
   page.replace("%FORCE_REFRESH_CHECKED%", settings.forceRefreshEveryCheck ? " checked" : "");
+  page.replace("%PORTRAIT_SELECTED%", settings.orientation == "portrait" ? " selected" : "");
+  page.replace("%LANDSCAPE_SELECTED%", settings.orientation == "landscape" ? " selected" : "");
   page.replace("%PANEL%", PANEL_PROFILE);
   page.replace("%SERIAL%", htmlEscape(settings.serial));
   return page;
@@ -619,6 +645,8 @@ FrameResult fetchNativeFrame() {
   WiFiClientSecure secureClient;
   String url = joinApiUrl("/api/device/frame.bin?panel=");
   url += PANEL_PROFILE;
+  url += "&orientation=";
+  url += settings.orientation;
   Serial.print("Downloading frame: ");
   Serial.println(url);
 
@@ -766,6 +794,35 @@ bool drawStoredImage() {
     return false;
   }
 
+#if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
+  uint8_t* blackPlane = static_cast<uint8_t*>(malloc(DISPLAY_PLANE_BYTES));
+  uint8_t* redPlane = static_cast<uint8_t*>(malloc(DISPLAY_PLANE_BYTES));
+  if (!blackPlane || !redPlane) {
+    free(blackPlane);
+    free(redPlane);
+    file.close();
+    setError("Display failed", "Cannot allocate planes", "Try again later");
+    return false;
+  }
+  logHeap("Heap after tri-color plane allocation");
+  size_t blackRead = file.read(blackPlane, DISPLAY_PLANE_BYTES);
+  size_t redRead = file.read(redPlane, DISPLAY_PLANE_BYTES);
+  file.close();
+  if (blackRead != DISPLAY_PLANE_BYTES || redRead != DISPLAY_PLANE_BYTES) {
+    free(blackPlane);
+    free(redPlane);
+    setError("Storage failed", "Frame read error", "Try again later");
+    return false;
+  }
+
+  display.init();
+  display.setRotation(0);
+  logHeap("Heap before tri-color drawImage");
+  display.drawImage(blackPlane, redPlane, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, false, false, false);
+  free(blackPlane);
+  free(redPlane);
+  return true;
+#else
   display.init();
   display.setRotation(0);
   logHeap("Heap before chunked drawNative");
@@ -789,6 +846,7 @@ bool drawStoredImage() {
   logHeap("Heap before full refresh");
   display.refresh(false);
   return true;
+#endif
 }
 
 void releaseNetwork() {
@@ -809,23 +867,35 @@ void logHeap(const char* label) {
 void drawStatusText(const char* line1, const char* line2, const char* line3, const char* line4) {
   display.init();
   display.setRotation(1);
+  int16_t width = display.width();
+  int16_t height = display.height();
+  int16_t margin = width < 400 ? 8 : 12;
+  int16_t headerHeight = width < 400 ? 40 : 54;
+  int16_t textX = margin + (width < 400 ? 12 : 18);
+  int16_t firstLineY = headerHeight + (height < 500 ? 68 : 130);
+  int16_t lineGap = height < 500 ? 44 : 58;
+#if FRIDGE_PANEL_TYPE == FRIDGE_PANEL_GDEY042Z98
+  uint16_t accentColor = GxEPD_RED;
+#else
+  uint16_t accentColor = GxEPD_YELLOW;
+#endif
   display.setFullWindow();
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
-    display.drawRect(12, 12, 456, 776, GxEPD_BLACK);
-    display.fillRect(12, 12, 456, 54, GxEPD_YELLOW);
+    display.drawRect(margin, margin, width - 2 * margin, height - 2 * margin, GxEPD_BLACK);
+    display.fillRect(margin, margin, width - 2 * margin, headerHeight, accentColor);
     display.setFont(&FreeMonoBold9pt7b);
     display.setTextColor(GxEPD_BLACK);
-    display.setCursor(24, 47);
+    display.setCursor(textX, margin + headerHeight - 17);
     display.print(DEVICE_NAME);
-    display.setCursor(30, 196);
+    display.setCursor(textX, firstLineY);
     display.print(line1);
-    display.setCursor(30, 254);
+    display.setCursor(textX, firstLineY + lineGap);
     display.print(line2);
-    display.setCursor(30, 312);
+    display.setCursor(textX, firstLineY + lineGap * 2);
     display.print(line3);
-    display.setCursor(30, 370);
+    display.setCursor(textX, firstLineY + lineGap * 3);
     display.print(line4);
   } while (display.nextPage());
 }
