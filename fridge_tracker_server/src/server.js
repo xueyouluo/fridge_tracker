@@ -21,6 +21,7 @@ const { createAccessTokenService } = require("./accessTokens");
 const { createAiSettingsService } = require("./aiSettings");
 const { createAgentService } = require("./agent");
 const { createMcpHandler } = require("./mcp");
+const { createHouseholdService } = require("./households");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
 const {
   displayNameFromEmail,
@@ -58,7 +59,10 @@ const db = new DatabaseSync(databasePath);
 const frameCache = new Map();
 
 initializeDatabase();
+const householdService = createHouseholdService({ db, hashValue: sha256 });
+householdService.ensureHouseholds();
 seedLocalDemo();
+householdService.ensureHouseholds();
 const foodService = createFoodService({ db, timezone: config.timezone, onChange: invalidateFrames });
 const accessTokenService = createAccessTokenService(db);
 const aiSettingsService = createAiSettingsService(db, config.credentialEncryptionKey || config.adminPassword);
@@ -66,9 +70,14 @@ const agentService = createAgentService({
   db,
   foodService,
   timezone: config.timezone,
-  resolveRuntime: aiSettingsService.resolveRuntime
+  resolveRuntime: (userId) => aiSettingsService.resolveRuntime(householdService.householdIdForUser(userId)),
+  resolveHouseholdId: householdService.householdIdForUser
 });
-const handleMcp = createMcpHandler({ foodService, authenticate: accessTokenService.authenticate });
+const handleMcp = createMcpHandler({
+  foodService,
+  authenticate: accessTokenService.authenticate,
+  resolveHouseholdId: householdService.householdIdForUser
+});
 
 function loadConfig() {
   let custom = {};
@@ -103,10 +112,35 @@ function initializeDatabase() {
       expires_at TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS households (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS household_members (
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+      joined_at TEXT NOT NULL,
+      PRIMARY KEY (household_id, user_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS household_single_owner_idx
+      ON household_members(household_id) WHERE role = 'owner';
+    CREATE TABLE IF NOT EXISTS household_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      accepted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      code_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS devices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       serial TEXT NOT NULL UNIQUE,
-      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      household_id INTEGER REFERENCES households(id) ON DELETE SET NULL,
       device_token_hash TEXT NOT NULL,
       panel_profile TEXT NOT NULL,
       last_seen_at TEXT,
@@ -115,7 +149,8 @@ function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS device_pairing_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       code_hash TEXT NOT NULL UNIQUE,
       expires_at TEXT NOT NULL,
       used_at TEXT,
@@ -123,7 +158,7 @@ function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS food_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
       quantity_text TEXT NOT NULL,
@@ -151,8 +186,9 @@ function initializeDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS user_ai_settings (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    CREATE TABLE IF NOT EXISTS household_ai_settings (
+      household_id INTEGER PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
+      updated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       api_key_encrypted TEXT NOT NULL,
       api_key_hint TEXT NOT NULL,
       model TEXT NOT NULL,
@@ -182,11 +218,14 @@ function initializeDatabase() {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS household_invites_household_idx ON household_invites(household_id, expires_at);
     CREATE INDEX IF NOT EXISTS agent_conversations_user_idx ON agent_conversations(user_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_messages_conversation_idx ON agent_messages(conversation_id, id);
   `);
   migrateUsersTable();
-  migrateDevicesTable();
+  ensureLegacyUserHouseholds();
+  migrateHouseholdScopeTables();
+  migrateAiSettingsTable();
   migrateAgentMessagesTable();
   migrateAgentPendingActionsTable();
 }
@@ -214,29 +253,124 @@ function migrateUsersTable() {
   db.prepare("UPDATE users SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''").run();
 }
 
-function migrateDevicesTable() {
+function ensureLegacyUserHouseholds() {
+  const users = db.prepare(`
+    SELECT users.id, users.login, users.display_name, users.created_at
+    FROM users LEFT JOIN household_members ON household_members.user_id = users.id
+    WHERE household_members.user_id IS NULL
+  `).all();
+  const insertHousehold = db.prepare("INSERT INTO households (name, created_at, updated_at) VALUES (?, ?, ?)");
+  const insertMember = db.prepare("INSERT INTO household_members (household_id, user_id, role, joined_at) VALUES (?, ?, 'owner', ?)");
+  users.forEach((user) => {
+    const now = user.created_at || new Date().toISOString();
+    const name = `${String(user.display_name || user.login || "我的").trim().slice(0, 50) || "我的"}的家庭`;
+    const household = insertHousehold.run(name, now, now);
+    insertMember.run(Number(household.lastInsertRowid), user.id, now);
+  });
+}
+
+function migrateHouseholdScopeTables() {
   db.exec("DROP TABLE IF EXISTS frame_revisions");
-  const columns = new Set(db.prepare("PRAGMA table_info(devices)").all().map((column) => column.name));
-  if (!columns.has("claim_code_hash")) return;
+  const deviceColumns = new Set(db.prepare("PRAGMA table_info(devices)").all().map((column) => column.name));
+  if (!deviceColumns.has("household_id")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE devices_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        serial TEXT NOT NULL UNIQUE,
+        household_id INTEGER REFERENCES households(id) ON DELETE SET NULL,
+        device_token_hash TEXT NOT NULL,
+        panel_profile TEXT NOT NULL,
+        last_seen_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO devices_migrated
+        (id, serial, household_id, device_token_hash, panel_profile, last_seen_at, created_at, updated_at)
+      SELECT id, serial,
+        (SELECT household_id FROM household_members WHERE user_id = devices.owner_id),
+        device_token_hash, panel_profile, last_seen_at, created_at, updated_at
+      FROM devices;
+      DROP TABLE devices;
+      ALTER TABLE devices_migrated RENAME TO devices;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  const foodColumns = new Set(db.prepare("PRAGMA table_info(food_items)").all().map((column) => column.name));
+  if (!foodColumns.has("household_id")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE food_items_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        quantity_text TEXT NOT NULL,
+        start_date TEXT,
+        shelf_life_days INTEGER,
+        expires_on TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO food_items_migrated
+        (id, household_id, name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
+      SELECT id,
+        (SELECT household_id FROM household_members WHERE user_id = food_items.owner_id),
+        name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at
+      FROM food_items;
+      DROP TABLE food_items;
+      ALTER TABLE food_items_migrated RENAME TO food_items;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  const pairingColumns = new Set(db.prepare("PRAGMA table_info(device_pairing_codes)").all().map((column) => column.name));
+  if (!pairingColumns.has("household_id")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE device_pairing_codes_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO device_pairing_codes_migrated
+        (id, household_id, created_by_user_id, code_hash, expires_at, used_at, created_at)
+      SELECT id,
+        (SELECT household_id FROM household_members WHERE user_id = device_pairing_codes.user_id),
+        user_id, code_hash, expires_at, used_at, created_at
+      FROM device_pairing_codes;
+      DROP TABLE device_pairing_codes;
+      ALTER TABLE device_pairing_codes_migrated RENAME TO device_pairing_codes;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+}
+
+function migrateAiSettingsTable() {
+  const legacy = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'user_ai_settings'").get();
+  if (!legacy) return;
   db.exec(`
-    PRAGMA foreign_keys = OFF;
-    CREATE TABLE devices_migrated (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      serial TEXT NOT NULL UNIQUE,
-      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      device_token_hash TEXT NOT NULL,
-      panel_profile TEXT NOT NULL,
-      last_seen_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+    INSERT OR IGNORE INTO household_ai_settings
+      (household_id, updated_by_user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
+    SELECT household_members.household_id, user_ai_settings.user_id,
+      user_ai_settings.api_key_encrypted, user_ai_settings.api_key_hint,
+      user_ai_settings.model, user_ai_settings.base_url, user_ai_settings.updated_at
+    FROM user_ai_settings
+    JOIN household_members ON household_members.user_id = user_ai_settings.user_id
+    WHERE user_ai_settings.user_id = (
+      SELECT candidate.user_id
+      FROM user_ai_settings AS candidate
+      JOIN household_members AS candidate_member ON candidate_member.user_id = candidate.user_id
+      WHERE candidate_member.household_id = household_members.household_id
+      ORDER BY CASE candidate_member.role WHEN 'owner' THEN 0 ELSE 1 END, candidate.updated_at DESC
+      LIMIT 1
     );
-    INSERT INTO devices_migrated
-      (id, serial, owner_id, device_token_hash, panel_profile, last_seen_at, created_at, updated_at)
-    SELECT id, serial, owner_id, device_token_hash, panel_profile, last_seen_at, created_at, updated_at
-    FROM devices;
-    DROP TABLE devices;
-    ALTER TABLE devices_migrated RENAME TO devices;
-    PRAGMA foreign_keys = ON;
+    DROP TABLE user_ai_settings;
   `);
 }
 
@@ -276,22 +410,23 @@ function seedLocalDemo() {
     }
     user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
   }
+  const householdId = householdService.createPersonalHousehold(user.id);
   let device = db.prepare("SELECT * FROM devices WHERE serial = ?").get("local-demo-screen");
   if (!device) {
     db.prepare(`
       INSERT INTO devices
-        (serial, owner_id, device_token_hash, panel_profile, created_at, updated_at)
+        (serial, household_id, device_token_hash, panel_profile, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       "local-demo-screen",
-      user.id,
+      householdId,
       sha256(config.demoDeviceToken),
       "gdem075f52",
       now,
       now
     );
   }
-  const foodCount = db.prepare("SELECT COUNT(*) AS count FROM food_items WHERE owner_id = ?").get(user.id).count;
+  const foodCount = db.prepare("SELECT COUNT(*) AS count FROM food_items WHERE household_id = ?").get(householdId).count;
   if (foodCount === 0) {
     const today = localDateKey(config.timezone);
     const examples = [
@@ -303,12 +438,12 @@ function seedLocalDemo() {
     ];
     const insert = db.prepare(`
       INSERT INTO food_items
-        (owner_id, name, category, quantity_text, expires_on, created_at, updated_at)
+        (household_id, name, category, quantity_text, expires_on, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const [name, category, quantityText, days] of examples) {
       const expiresOn = addDays(today, days);
-      insert.run(user.id, name, category, quantityText, expiresOn, now, now);
+      insert.run(householdId, name, category, quantityText, expiresOn, now, now);
     }
   }
 }
@@ -409,8 +544,10 @@ function userRowsFor(current) {
     users.role,
     users.created_at,
     users.updated_at,
-    (SELECT COUNT(*) FROM food_items WHERE owner_id = users.id) AS food_count,
-    (SELECT COUNT(*) FROM devices WHERE owner_id = users.id) AS device_count
+    (SELECT COUNT(*) FROM food_items WHERE household_id =
+      (SELECT household_id FROM household_members WHERE user_id = users.id)) AS food_count,
+    (SELECT COUNT(*) FROM devices WHERE household_id =
+      (SELECT household_id FROM household_members WHERE user_id = users.id)) AS device_count
   `;
   if (isAdmin(current)) {
     return db.prepare(`
@@ -514,6 +651,7 @@ function cleanupPairingCodes(nowIso = new Date().toISOString()) {
 }
 
 function createDevicePairingCode(userId) {
+  const membership = householdService.requireOwner(userId);
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = pairingCodeExpiresAt(now);
@@ -524,9 +662,9 @@ function createDevicePairingCode(userId) {
     const existing = db.prepare("SELECT id FROM device_pairing_codes WHERE code_hash = ?").get(codeHash);
     if (existing) continue;
     db.prepare(`
-      INSERT INTO device_pairing_codes (user_id, code_hash, expires_at, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(userId, codeHash, expiresAt, createdAt);
+      INSERT INTO device_pairing_codes (household_id, created_by_user_id, code_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(membership.householdId, userId, codeHash, expiresAt, createdAt);
     return { code, expiresAt };
   }
   throw new Error("could not generate pairing code");
@@ -577,7 +715,7 @@ async function routeApi(req, res, url) {
       timezone: config.timezone,
       frameBytes: FRAME_BYTES,
       panelProfiles,
-      agentMode: "per-user"
+      agentMode: "household-settings-personal-conversations"
     });
     return true;
   }
@@ -610,6 +748,7 @@ async function routeApi(req, res, url) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(email, email, displayName, "member", hashSecret(password), now, now);
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(created.lastInsertRowid));
+    householdService.createPersonalHousehold(user.id);
     const session = createSession(user.id);
     sendJson(res, 201, publicUser(user), { "Set-Cookie": sessionCookie(session) });
     return true;
@@ -639,8 +778,8 @@ async function routeApi(req, res, url) {
       return true;
     }
     const existing = db.prepare("SELECT * FROM devices WHERE serial = ?").get(serial);
-    if (existing?.owner_id && existing.owner_id !== pairingResult.pairing.user_id) {
-      sendJson(res, 409, { error: "device already belongs to another user" });
+    if (existing?.household_id && existing.household_id !== pairingResult.pairing.household_id) {
+      sendJson(res, 409, { error: "device already belongs to another household" });
       return true;
     }
     const token = crypto.randomBytes(32).toString("hex");
@@ -652,13 +791,13 @@ async function routeApi(req, res, url) {
     }
     if (existing) {
       db.prepare(`
-        UPDATE devices SET owner_id = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
-      `).run(pairingResult.pairing.user_id, sha256(token), panel, now, existing.id);
+        UPDATE devices SET household_id = ?, device_token_hash = ?, panel_profile = ?, updated_at = ? WHERE id = ?
+      `).run(pairingResult.pairing.household_id, sha256(token), panel, now, existing.id);
     } else {
       db.prepare(`
-        INSERT INTO devices (serial, owner_id, device_token_hash, panel_profile, created_at, updated_at)
+        INSERT INTO devices (serial, household_id, device_token_hash, panel_profile, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(serial, pairingResult.pairing.user_id, sha256(token), panel, now, now);
+      `).run(serial, pairingResult.pairing.household_id, sha256(token), panel, now, now);
     }
     sendJson(res, 201, { serial, panelProfile: panel, deviceToken: token });
     return true;
@@ -667,13 +806,13 @@ async function routeApi(req, res, url) {
   if (req.method === "GET" && (url.pathname === "/api/device/frame.bin" || url.pathname === "/api/device/frame.png")) {
     const device = requireDevice(req, res);
     if (!device) return true;
-    if (!device.owner_id) {
+    if (!device.household_id) {
       sendJson(res, 409, { error: "device has not been paired" });
       return true;
     }
     const panel = panelProfile(url.searchParams.get("panel") || device.panel_profile);
     const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
-    const frame = await getRenderedFrame(device.owner_id, panel, orientation);
+    const frame = await getRenderedFrame(device.household_id, panel, orientation);
     db.prepare("UPDATE devices SET last_seen_at = ?, panel_profile = ?, updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), panel, new Date().toISOString(), device.id);
     if (req.headers["if-none-match"] === frame.etag) {
@@ -691,6 +830,7 @@ async function routeApi(req, res, url) {
 
   const user = requireUser(req, res);
   if (!user) return true;
+  const householdId = householdService.householdIdForUser(user.id);
 
   if (req.method === "GET" && url.pathname === "/api/users") {
     sendJson(res, 200, {
@@ -701,24 +841,61 @@ async function routeApi(req, res, url) {
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/household") {
+    sendJson(res, 200, householdService.publicHousehold(user.id));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/household/invites") {
+    const invite = householdService.createInvite(user.id);
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const protocol = forwardedProto || (config.secureCookies ? "https" : "http");
+    const host = req.headers.host || `${config.host}:${config.port}`;
+    sendJson(res, 201, { ...invite, inviteUrl: `${protocol}://${host}/?invite=${invite.code}` });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/household/invites/inspect") {
+    sendJson(res, 200, householdService.inspectInvite(url.searchParams.get("code")));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/household/invites/accept") {
+    const result = householdService.acceptInvite(user.id, (await readJson(req)).code);
+    invalidateFrames();
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  const householdMemberMatch = url.pathname.match(/^\/api\/household\/members\/(\d+)$/);
+  if (householdMemberMatch && req.method === "DELETE") {
+    sendJson(res, 200, householdService.removeMember(user.id, Number(householdMemberMatch[1])));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/household/leave") {
+    sendJson(res, 200, householdService.leaveHousehold(user.id));
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/foods") {
-    sendJson(res, 200, { items: allFoods(user.id), today: localDateKey(config.timezone) });
+    sendJson(res, 200, { items: allFoods(householdId), today: localDateKey(config.timezone) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/foods") {
-    sendJson(res, 201, foodService.createFoodItem(user.id, await readJson(req)));
+    sendJson(res, 201, foodService.createFoodItem(householdId, await readJson(req)));
     return true;
   }
 
   const foodMatch = url.pathname.match(/^\/api\/foods\/(\d+)$/);
   if (foodMatch && req.method === "PATCH") {
-    sendJson(res, 200, foodService.updateFoodItem(user.id, Number(foodMatch[1]), await readJson(req)));
+    sendJson(res, 200, foodService.updateFoodItem(householdId, Number(foodMatch[1]), await readJson(req)));
     return true;
   }
 
   if (foodMatch && req.method === "DELETE") {
-    sendJson(res, 200, { ok: true, deleted: foodService.deleteFoodItem(user.id, Number(foodMatch[1])) });
+    sendJson(res, 200, { ok: true, deleted: foodService.deleteFoodItem(householdId, Number(foodMatch[1])) });
     return true;
   }
 
@@ -745,17 +922,23 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/agent/settings") {
-    sendJson(res, 200, aiSettingsService.getSettings(user.id));
+    const membership = householdService.membershipFor(user.id);
+    const settings = aiSettingsService.getSettings(membership.householdId);
+    sendJson(res, 200, membership.role === "owner"
+      ? { ...settings, canManage: true, scope: "household" }
+      : { configured: settings.configured, canManage: false, scope: "household" });
     return true;
   }
 
   if (req.method === "PUT" && url.pathname === "/api/agent/settings") {
-    sendJson(res, 200, aiSettingsService.saveSettings(user.id, await readJson(req)));
+    const membership = householdService.requireOwner(user.id);
+    sendJson(res, 200, { ...aiSettingsService.saveSettings(membership.householdId, user.id, await readJson(req)), canManage: true, scope: "household" });
     return true;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/agent/settings") {
-    sendJson(res, 200, aiSettingsService.clearSettings(user.id));
+    const membership = householdService.requireOwner(user.id);
+    sendJson(res, 200, aiSettingsService.clearSettings(membership.householdId));
     return true;
   }
 
@@ -792,7 +975,7 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/devices") {
-    sendJson(res, 200, { devices: db.prepare("SELECT * FROM devices WHERE owner_id = ?").all(user.id).map(publicDevice) });
+    sendJson(res, 200, { devices: db.prepare("SELECT * FROM devices WHERE household_id = ?").all(householdId).map(publicDevice) });
     return true;
   }
 
@@ -804,14 +987,14 @@ async function routeApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/display/preview") {
     const panel = panelProfile(url.searchParams.get("panel") || "gdem075f52");
     const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
-    sendText(res, 200, renderDashboardHtml(allFoods(user.id), displayTimestamp(), { panel, orientation }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDashboardHtml(allFoods(householdId), displayTimestamp(), { panel, orientation }), "text/html; charset=utf-8");
     return true;
   }
 
   if (req.method === "GET" && url.pathname === "/api/display/frame.png") {
     const panel = panelProfile(url.searchParams.get("panel") || "gdem075f52");
     const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
-    const frame = await getRenderedFrame(user.id, panel, orientation);
+    const frame = await getRenderedFrame(householdId, panel, orientation);
     sendBuffer(res, 200, frame.png, "image/png", { ETag: frame.etag });
     return true;
   }
@@ -858,7 +1041,7 @@ const server = http.createServer(async (req, res) => {
     sendText(res, 404, "not found\n");
   } catch (error) {
     console.error(error);
-    if (!res.headersSent) sendJson(res, error.statusCode || 400, { error: error.message });
+    if (!res.headersSent) sendJson(res, error.statusCode || 400, { error: error.message, ...(error.code ? { code: error.code } : {}) });
   }
 });
 

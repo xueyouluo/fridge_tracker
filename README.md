@@ -219,10 +219,10 @@ ipconfig getifaddr en0
 ### 使用我们提供的托管服务
 
 公共地址为 `https://fridge.followllm.online`。这里只需要注册账号、生成配对码，
-不需要安装 Node.js、数据库或浏览器渲染依赖。每个账号的数据相互隔离。
+不需要安装 Node.js、数据库或浏览器渲染依赖。不同家庭的数据相互隔离，家庭成员共享同一份食材和设备。
 
 基础食材管理和墨水屏同步不需要配置模型。内置助手使用的 API Key、模型 ID 和
-Base URL 由每位用户在“用户 → 我的模型”中自行设置，费用和配额也归该用户。
+Base URL 由家庭创建者在“用户 → 家庭 Agent”中设置，所有家庭成员直接共用；每个人的对话记录仍保持独立。
 
 ### 部署在本地电脑或 NAS
 
@@ -285,4 +285,4 @@ python models/ink_frame_v1/design_checks.py
 - 不要提交 `fridge_tracker_server/config.json`、`fridge_tracker_server/data/`、`.env*`、
   生成的帧二进制文件或构建产物。
 - 对外提供服务时必须替换所有示例密码和 token，并使用 HTTPS。
-- 个人模型 API Key 不应写入仓库；页面会按账号加密保存。
+- 家庭模型 API Key 不应写入仓库；页面会加密保存，且只有家庭创建者可以修改。

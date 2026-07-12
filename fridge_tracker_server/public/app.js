@@ -13,7 +13,7 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
 const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
@@ -60,7 +60,12 @@ async function api(path, options = {}) {
     ...options
   });
   const body = response.headers.get("content-type")?.includes("json") ? await response.json() : null;
-  if (!response.ok) throw new Error(body?.error || `请求失败 (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(body?.error || `请求失败 (${response.status})`);
+    error.code = body?.code || "";
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
@@ -167,7 +172,7 @@ function setView(view, options = {}) {
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
-  if (options.updateHash !== false) history.replaceState(null, "", `#${target}`);
+  if (options.updateHash !== false) history.replaceState(null, "", `${location.pathname}${location.search}#${target}`);
   if (target === "devices") refreshPreview();
   if (target === "agent") loadAgent().catch((error) => toast(error.message));
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
@@ -493,9 +498,67 @@ async function enterWorkspace(user) {
   $("#sessionActions").classList.remove("hidden");
   $("#accountName").textContent = displayName(user);
   $("#welcomeUser").textContent = displayName(user);
+  await loadHousehold();
   await Promise.all([loadFoods(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadConversations()]);
   const initialView = location.hash.slice(1);
   setView(initialView || "overview", { updateHash: false, scroll: false });
+  await handlePendingHouseholdInvite();
+}
+
+function householdRoleText(role) {
+  return role === "owner" ? "家庭创建者" : "家庭成员";
+}
+
+function renderHouseholdMember(member) {
+  const canRemove = state.household?.permissions.manageMembers && member.householdRole === "member";
+  return `<article class="household-member">
+    <strong>${escapeHtml(member.displayName)}</strong>
+    <small>${escapeHtml(member.email || member.login)}</small>
+    <span class="role-pill ${member.householdRole === "owner" ? "admin" : "member"}">${escapeHtml(householdRoleText(member.householdRole))}</span>
+    ${canRemove ? `<button type="button" data-remove-household-member="${member.id}">移除</button>` : ""}
+  </article>`;
+}
+
+async function loadHousehold() {
+  const result = await api("/api/household");
+  state.household = result;
+  $("#householdName").textContent = result.household.name;
+  $("#householdRole").textContent = householdRoleText(result.currentRole);
+  $("#householdRole").className = `role-pill ${result.currentRole === "owner" ? "admin" : "member"}`;
+  $("#householdHint").textContent = result.currentRole === "owner"
+    ? "你可以邀请家人、管理成员和配对设备，所有成员共同维护食材。"
+    : "你和家人共同维护食材；成员邀请和设备配对由家庭创建者管理。";
+  $("#householdMembers").innerHTML = result.members.map(renderHouseholdMember).join("");
+  $("#createHouseholdInvite").classList.toggle("hidden", !result.permissions.manageMembers);
+  $("#leaveHousehold").classList.toggle("hidden", !result.permissions.leaveHousehold);
+  $("#generatePairingCode").classList.toggle("hidden", !result.permissions.manageDevices);
+  $("#devicePairingHint").textContent = result.permissions.manageDevices
+    ? "先生成一次性配对码，再在 ESP32 配网页填写该码。配对成功后设备会关联到当前家庭。"
+    : "设备由家庭创建者管理；你仍可查看设备状态和共享的屏幕画面。";
+}
+
+async function handlePendingHouseholdInvite() {
+  const code = state.pendingInviteCode;
+  if (!code) return;
+  try {
+    const invite = await api(`/api/household/invites/inspect?code=${encodeURIComponent(code)}`);
+    const confirmed = await confirmDialog({
+      eyebrow: "家庭邀请",
+      title: `加入“${invite.household.name}”？`,
+      body: `${invite.inviter.displayName} 邀请你共同管理家庭食材和屏幕内容。加入后，你当前的空家庭会被替换。`,
+      confirmText: "加入家庭"
+    });
+    if (!confirmed) return;
+    await api("/api/household/invites/accept", { method: "POST", body: JSON.stringify({ code }) });
+    state.pendingInviteCode = "";
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("invite");
+    history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    await Promise.all([loadHousehold(), loadFoods(), loadDevices(), loadUsers()]);
+    toast("已加入家庭");
+  } catch (error) {
+    toast(error.code === "household_not_empty" ? "当前家庭已有食材或设备，暂时无法加入其他家庭" : error.message);
+  }
 }
 
 async function loadFoods() {
@@ -557,7 +620,7 @@ async function loadDevices() {
   const recent = result.devices.find((device) => device.lastSeenAt) || result.devices[0];
   $("#overviewDevice").innerHTML = recent
     ? `<strong>${escapeHtml(recent.serial)}</strong><span>${recent.lastSeenAt ? `最近同步 ${escapeHtml(formatTime(recent.lastSeenAt))}` : "已绑定，等待首次同步"}</span>`
-    : `<strong>暂无已绑定设备</strong><span>前往设备页面生成配对码</span>`;
+    : `<strong>暂无已绑定设备</strong><span>${state.household?.permissions.manageDevices ? "前往设备页面生成配对码" : "请联系家庭创建者配对设备"}</span>`;
 }
 
 function renderDevice(device) {
@@ -598,13 +661,23 @@ async function loadAiSettings() {
   const result = await api("/api/agent/settings");
   state.aiSettings = result;
   const form = $("#aiSettingsForm");
+  const canManage = result.canManage === true;
+  form.classList.toggle("hidden", !canManage);
+  $("#aiSettingsHint").textContent = canManage
+    ? "这套配置供整个家庭使用，API Key 会加密保存且不会再次回显。"
+    : result.configured
+      ? "家庭创建者已配置 Agent，你可以直接在概览或助手页面使用。"
+      : "家庭 Agent 尚未配置，请联系家庭创建者完成模型设置。";
+  $("#aiSettingsState").textContent = result.configured
+    ? (canManage ? `已配置 ${result.apiKeyHint}` : "家庭已配置")
+    : "未配置";
+  if (!canManage) return;
   form.elements.openaiApiKey.value = "";
   form.elements.openaiApiKey.placeholder = result.configured
     ? `${result.apiKeyHint}（留空保留）`
     : "首次配置必填";
   form.elements.openaiModel.value = result.openaiModel || "";
   form.elements.openaiBaseUrl.value = result.openaiBaseUrl || "https://api.openai.com/v1";
-  $("#aiSettingsState").textContent = result.configured ? `已配置 ${result.apiKeyHint}` : "未配置";
   $("#clearAiSettings").disabled = !result.configured;
 }
 
@@ -613,7 +686,11 @@ async function loadConversations() {
   state.agentConfigured = result.configured;
   state.conversations = result.conversations;
   $("#agentStatus").textContent = result.configured ? "模型已连接" : "Agent 未配置";
-  $("#overviewAgentStatus").textContent = result.configured ? "" : "Agent 未配置，请先在用户页面填写自己的模型信息。";
+  $("#overviewAgentStatus").textContent = result.configured
+    ? ""
+    : state.household?.permissions.manageMembers
+      ? "家庭 Agent 未配置，请在用户页面完成模型设置。"
+      : "家庭 Agent 未配置，请联系家庭创建者完成模型设置。";
   $("#agentForm").classList.toggle("agent-disabled", !result.configured);
   $("#agentForm").querySelector("textarea").disabled = !result.configured;
   $("#agentForm").querySelector("button").disabled = !result.configured;
@@ -1024,6 +1101,70 @@ $("#generatePairingCode").addEventListener("click", async () => {
   }
 });
 
+$("#createHouseholdInvite").addEventListener("click", async () => {
+  try {
+    const result = await api("/api/household/invites", { method: "POST", body: "{}" });
+    state.householdInvite = result;
+    $("#householdInviteCode").textContent = result.code;
+    $("#householdInviteExpires").textContent = `有效期至 ${formatTime(result.expiresAt)}，使用一次后失效`;
+    $("#householdInvitePanel").classList.remove("hidden");
+    toast("家庭邀请已生成");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#copyHouseholdInvite").addEventListener("click", async () => {
+  if (!state.householdInvite?.inviteUrl) return;
+  try {
+    await navigator.clipboard.writeText(state.householdInvite.inviteUrl);
+    toast("邀请链接已复制");
+  } catch {
+    toast(`复制失败，请分享邀请码 ${state.householdInvite.code}`);
+  }
+});
+
+$("#householdMembers").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-remove-household-member]");
+  if (!button) return;
+  const member = state.household?.members.find((item) => item.id === Number(button.dataset.removeHouseholdMember));
+  const confirmed = await confirmDialog({
+    eyebrow: "家庭成员",
+    title: `移除“${member?.displayName || "该成员"}”？`,
+    body: "移除后，对方将立即失去这个家庭的食材、设备和屏幕访问权限，并获得一个新的空家庭。",
+    confirmText: "移除",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+  try {
+    await api(`/api/household/members/${button.dataset.removeHouseholdMember}`, { method: "DELETE" });
+    await loadHousehold();
+    toast("家庭成员已移除");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#leaveHousehold").addEventListener("click", async () => {
+  const confirmed = await confirmDialog({
+    eyebrow: "退出家庭",
+    title: `退出“${state.household?.household.name || "当前家庭"}”？`,
+    body: "退出后你将无法访问当前家庭的食材、设备和屏幕内容，系统会为你创建一个新的空家庭。",
+    confirmText: "退出",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+  try {
+    await api("/api/household/leave", { method: "POST", body: "{}" });
+    state.householdInvite = null;
+    $("#householdInvitePanel").classList.add("hidden");
+    await Promise.all([loadHousehold(), loadFoods(), loadDevices(), loadUsers()]);
+    toast("已退出家庭");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
 $("#tokenForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = event.target.querySelector("button");
@@ -1070,7 +1211,7 @@ $("#aiSettingsForm").addEventListener("submit", async (event) => {
 $("#clearAiSettings").addEventListener("click", async () => {
   const confirmed = await confirmDialog({
     title: "清除模型配置？",
-    body: "清除后，当前账号将无法使用概览和助手页面中的 Agent，历史对话不会删除。",
+    body: "清除后，所有家庭成员都将无法使用 Agent；每个人已有的历史对话不会删除。",
     confirmText: "清除",
     tone: "danger"
   });

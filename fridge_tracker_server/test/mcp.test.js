@@ -11,12 +11,12 @@ const { createTestDatabase } = require("./helpers");
 test("MCP exposes scoped batch food CRUD tools", async () => {
   const db = createTestDatabase();
   const foods = createFoodService({ db });
-  const server = createMcpServer(foods, { id: 1 });
+  const server = createMcpServer(foods, { id: 2 }, () => 1);
   const client = new Client({ name: "test", version: "1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  assert.match(client.getInstructions(), /管理当前登录用户的冰箱食材和保鲜期限/);
+  assert.match(client.getInstructions(), /管理当前账号所属家庭的冰箱食材和保鲜期限/);
   assert.match(client.getInstructions(), /绝不臆造 ID/);
   assert.match(client.getInstructions(), /不管理用户账号、模型配置或墨水屏设备/);
   const tools = await client.listTools();

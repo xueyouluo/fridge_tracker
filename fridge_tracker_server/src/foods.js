@@ -26,12 +26,12 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     return decorateFood(row, localDateKey(timezone));
   }
 
-  function listFoodItems(ownerId) {
-    const rows = db.prepare("SELECT * FROM food_items WHERE owner_id = ?").all(ownerId);
+  function listFoodItems(householdId) {
+    const rows = db.prepare("SELECT * FROM food_items WHERE household_id = ?").all(householdId);
     return sortFoods(rows.map(decorate));
   }
 
-  function searchFoodItems(ownerId, filters = {}) {
+  function searchFoodItems(householdId, filters = {}) {
     const keyword = String(filters.keyword || "").trim().toLocaleLowerCase().slice(0, 100);
     const category = String(filters.category || "").trim().slice(0, 20);
     const status = String(filters.status || "").trim();
@@ -46,8 +46,8 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
 
     const today = localDateKey(timezone);
     const expiringThrough = addDays(today, 3);
-    const conditions = ["owner_id = ?"];
-    const params = [ownerId];
+    const conditions = ["household_id = ?"];
+    const params = [householdId];
     if (category) {
       conditions.push("category = ?");
       params.push(category);
@@ -89,30 +89,30 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     return { items, total, offset, limit, hasMore: offset + items.length < total };
   }
 
-  function getFoodItem(ownerId, id) {
-    const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND owner_id = ?").get(Number(id), ownerId);
+  function getFoodItem(householdId, id) {
+    const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND household_id = ?").get(Number(id), householdId);
     if (!row) throw new FoodNotFoundError();
     return decorate(row);
   }
 
-  function getFoodItems(ownerId, ids) {
-    return normalizeBatchIds(ids).map((id) => getFoodItem(ownerId, id));
+  function getFoodItems(householdId, ids) {
+    return normalizeBatchIds(ids).map((id) => getFoodItem(householdId, id));
   }
 
-  function createFoodItem(ownerId, input) {
+  function createFoodItem(householdId, input) {
     const item = normalizeFoodInput(input);
     const now = new Date().toISOString();
     const created = db.prepare(`
       INSERT INTO food_items
-        (owner_id, name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
+        (household_id, name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(ownerId, item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
-    onChange();
-    return getFoodItem(ownerId, Number(created.lastInsertRowid));
+    `).run(householdId, item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
+    onChange(householdId);
+    return getFoodItem(householdId, Number(created.lastInsertRowid));
   }
 
-  function updateFoodItem(ownerId, id, patch) {
-    const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND owner_id = ?").get(Number(id), ownerId);
+  function updateFoodItem(householdId, id, patch) {
+    const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND household_id = ?").get(Number(id), householdId);
     if (!row) throw new FoodNotFoundError();
     const item = normalizeFoodInput({
       name: patch.name ?? row.name,
@@ -124,45 +124,45 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     });
     db.prepare(`
       UPDATE food_items SET name = ?, category = ?, quantity_text = ?, start_date = ?, shelf_life_days = ?, expires_on = ?, updated_at = ?
-      WHERE id = ? AND owner_id = ?
-    `).run(item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), Number(id), ownerId);
-    onChange();
-    return getFoodItem(ownerId, id);
+      WHERE id = ? AND household_id = ?
+    `).run(item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), Number(id), householdId);
+    onChange(householdId);
+    return getFoodItem(householdId, id);
   }
 
-  function deleteFoodItem(ownerId, id) {
-    const item = getFoodItem(ownerId, id);
-    db.prepare("DELETE FROM food_items WHERE id = ? AND owner_id = ?").run(Number(id), ownerId);
-    onChange();
+  function deleteFoodItem(householdId, id) {
+    const item = getFoodItem(householdId, id);
+    db.prepare("DELETE FROM food_items WHERE id = ? AND household_id = ?").run(Number(id), householdId);
+    onChange(householdId);
     return item;
   }
 
-  function validateActions(ownerId, actions) {
+  function validateActions(householdId, actions) {
     if (!Array.isArray(actions) || actions.length === 0 || actions.length > 25) {
       throw new Error("actions must contain between 1 and 25 operations");
     }
     return actions.map((action) => {
       if (action.operation === "create") return { operation: "create", input: normalizeFoodInput(action.input || {}) };
       if (action.operation === "update") {
-        getFoodItem(ownerId, action.id);
+        getFoodItem(householdId, action.id);
         return { operation: "update", id: Number(action.id), patch: action.patch || {} };
       }
       if (action.operation === "delete") {
-        getFoodItem(ownerId, action.id);
+        getFoodItem(householdId, action.id);
         return { operation: "delete", id: Number(action.id) };
       }
       throw new Error("unsupported food operation");
     });
   }
 
-  function applyActions(ownerId, actions) {
-    const normalized = validateActions(ownerId, actions);
+  function applyActions(householdId, actions) {
+    const normalized = validateActions(householdId, actions);
     db.exec("BEGIN IMMEDIATE");
     try {
       const results = normalized.map((action) => {
-        if (action.operation === "create") return { operation: "create", item: createFoodItem(ownerId, action.input) };
-        if (action.operation === "update") return { operation: "update", item: updateFoodItem(ownerId, action.id, action.patch) };
-        return { operation: "delete", item: deleteFoodItem(ownerId, action.id) };
+        if (action.operation === "create") return { operation: "create", item: createFoodItem(householdId, action.input) };
+        if (action.operation === "update") return { operation: "update", item: updateFoodItem(householdId, action.id, action.patch) };
+        return { operation: "delete", item: deleteFoodItem(householdId, action.id) };
       });
       db.exec("COMMIT");
       return results;
@@ -172,20 +172,20 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     }
   }
 
-  function createFoodItems(ownerId, items) {
+  function createFoodItems(householdId, items) {
     if (!Array.isArray(items)) throw new Error("items must be an array");
-    return applyActions(ownerId, items.map((input) => ({ operation: "create", input })));
+    return applyActions(householdId, items.map((input) => ({ operation: "create", input })));
   }
 
-  function updateFoodItems(ownerId, items) {
+  function updateFoodItems(householdId, items) {
     if (!Array.isArray(items)) throw new Error("items must be an array");
     const ids = normalizeBatchIds(items.map((item) => item?.id));
     const actions = items.map((item, index) => ({ operation: "update", id: ids[index], patch: item.patch || {} }));
-    return applyActions(ownerId, actions);
+    return applyActions(householdId, actions);
   }
 
-  function deleteFoodItems(ownerId, ids) {
-    return applyActions(ownerId, normalizeBatchIds(ids).map((id) => ({ operation: "delete", id })));
+  function deleteFoodItems(householdId, ids) {
+    return applyActions(householdId, normalizeBatchIds(ids).map((id) => ({ operation: "delete", id })));
   }
 
   return {

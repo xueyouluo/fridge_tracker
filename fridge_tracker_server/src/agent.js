@@ -23,7 +23,10 @@ function summarizeActions(actions) {
   }).join("、");
 }
 
-function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resolveRuntime, apiKey, model, baseURL, client, clientFactory }) {
+function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resolveRuntime, resolveHouseholdId = (userId) => userId, apiKey, model, baseURL, client, clientFactory }) {
+  function householdIdFor(userId) {
+    return resolveHouseholdId(userId);
+  }
   function runtimeFor(userId) {
     if (resolveRuntime) return resolveRuntime(userId);
     if (client && model) return { client, model, baseURL };
@@ -110,7 +113,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
       if (action.operation === "create") {
         return { operation: "create", name: action.input.name, category: action.input.category, quantityText: action.input.quantityText, expiresOn: action.input.expiresOn };
       }
-      const current = foodService.getFoodItem(userId, action.id);
+      const current = foodService.getFoodItem(householdIdFor(userId), action.id);
       if (action.operation === "update") {
         return {
           operation: "update",
@@ -131,7 +134,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
   }
 
   function createPendingAction(userId, conversationId, actions, resume = null) {
-    const normalized = foodService.validateActions(userId, actions);
+    const normalized = foodService.validateActions(householdIdFor(userId), actions);
     const encodedActions = JSON.stringify(normalized);
     const details = actionDetails(userId, normalized);
     const summary = summarizeDetails(details);
@@ -156,13 +159,14 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
   }
 
   function executeTool(userId, conversationId, name, args, resume = null) {
-    if (name === "list_foods") return foodService.searchFoodItems(userId, args);
-    if (name === "get_foods") return { items: foodService.getFoodItems(userId, args.ids) };
-    if (name === "create_foods") return { status: "executed", results: foodService.createFoodItems(userId, args.items) };
-    if (name === "update_foods") return { status: "executed", results: foodService.updateFoodItems(userId, args.items) };
+    const householdId = householdIdFor(userId);
+    if (name === "list_foods") return foodService.searchFoodItems(householdId, args);
+    if (name === "get_foods") return { items: foodService.getFoodItems(householdId, args.ids) };
+    if (name === "create_foods") return { status: "executed", results: foodService.createFoodItems(householdId, args.items) };
+    if (name === "update_foods") return { status: "executed", results: foodService.updateFoodItems(householdId, args.items) };
     if (name === "delete_foods") {
       const actions = (args.ids || []).map((id) => ({ operation: "delete", id }));
-      foodService.validateActions(userId, actions);
+      foodService.validateActions(householdId, actions);
       return { pendingAction: createPendingAction(userId, conversationId, actions, resume) };
     }
     throw new Error("unsupported agent tool");
@@ -315,7 +319,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
   async function sendMessage(userId, conversationId, content) {
     const runtime = runtimeFor(userId);
     if (!runtime) {
-      const error = new Error("Agent 未配置，请先在用户页面填写自己的模型 API Key、模型和 Base URL");
+      const error = new Error("家庭 Agent 未配置，请由家庭创建者在用户页面填写模型 API Key、模型和 Base URL");
       error.statusCode = 503;
       throw error;
     }
@@ -360,7 +364,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
       return { cancelled: true, message };
     }
     const actions = JSON.parse(row.actions_json);
-    const results = foodService.applyActions(userId, actions);
+    const results = foodService.applyActions(householdIdFor(userId), actions);
     const changed = db.prepare("UPDATE agent_pending_actions SET resolved_at = ?, resolution = 'confirmed' WHERE id = ? AND resolved_at IS NULL").run(now, row.id);
     if (!changed.changes) throw new Error("pending action has already been resolved");
     const reply = await resumePendingReply(userId, row, { status: "executed", results }, `已执行：${executedSummary(results)}。`);

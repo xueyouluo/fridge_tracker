@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260712-4"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260712-6"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -73,7 +73,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260712-4/);
+  assert.match(html, /styles\.css\?v=20260712-7/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -87,12 +87,40 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260712-4/);
+  assert.match(html, /app\.js\?v=20260712-6/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
   assert.match(app, /Date\.now\(\) - updatedAt <= OVERVIEW_CONVERSATION_REUSE_MS/);
   assert.match(app, /\$\("#overviewAgentForm"\)[\s\S]*await ensureOverviewConversation\(\)/);
+});
+
+test("household UI supports invitations, member controls and owner-only device pairing", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  assert.match(html, /id="householdMembers"/);
+  assert.match(html, /id="createHouseholdInvite"/);
+  assert.match(html, /id="leaveHousehold"/);
+  assert.match(app, /async function handlePendingHouseholdInvite\(\)/);
+  assert.match(app, /\/api\/household\/invites\/accept/);
+  assert.match(app, /permissions\.manageDevices/);
+  assert.match(app, /data-remove-household-member/);
+  assert.match(html, />家庭 Agent<\/h2>/);
+  assert.match(app, /form\.classList\.toggle\("hidden", !canManage\)/);
+  assert.match(app, /家庭创建者已配置 Agent/);
+});
+
+test("buttons use a consistent three-level control scale", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  assert.match(css, /--control-height-sm: 32px/);
+  assert.match(css, /--control-height-md: 44px/);
+  assert.match(css, /--control-height-lg: 48px/);
+  assert.match(css, /\.primary \{[\s\S]*height: var\(--control-height-md\)/);
+  assert.match(css, /\.actions button \{[\s\S]*height: var\(--control-height-sm\)/);
+  assert.match(css, /\.food-editor-actions button \{ height: var\(--control-height-lg\)/);
+  assert.match(css, /\.link \{[\s\S]*min-height: var\(--control-height-sm\)/);
+  assert.match(html, /id="leaveHousehold" class="danger-button hidden"/);
 });
 
 test("agent markdown tables stay inside the overview card and scroll internally", () => {

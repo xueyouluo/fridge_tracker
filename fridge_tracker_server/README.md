@@ -60,9 +60,9 @@ cp config.example.json config.json
 
 ## 内置文字 Agent
 
-每位用户在 H5 的“用户 → 我的模型”中配置自己的 API Key、模型 ID 和 Base URL。模型费用、配额和供应商账号归该用户自己，不会与其他鲜知贴账号共用。
+家庭创建者在 H5 的“用户 → 家庭 Agent”中配置 API Key、模型 ID 和 Base URL，所有家庭成员直接共用这套模型配置，无需重复填写。成员的 Agent 对话记录和 MCP 访问令牌仍按个人账号隔离。
 
-页面不会再次回显完整 API Key，只显示末四位提示。API Key 使用 AES-256-GCM 加密后保存到 SQLite；服务端加密密钥来自 `config.json`：
+页面不会再次回显完整 API Key，只有家庭创建者能看到末四位提示并修改配置。API Key 使用 AES-256-GCM 加密后保存到 SQLite；服务端加密密钥来自 `config.json`：
 
 ```json
 {
@@ -70,9 +70,9 @@ cp config.example.json config.json
 }
 ```
 
-如果没有显式设置 `credentialEncryptionKey`，服务会兼容性地使用 `adminPassword` 加密；正式部署仍建议配置独立随机密钥。部署后不要随意更换用于加密的值，否则已保存的用户 API Key 将无法解密，需要用户重新填写。使用其他 OpenAI-compatible 服务时，用户可在页面把 Base URL 改为供应商提供的 `/v1` 地址。远程地址必须使用 HTTPS，本机模型服务可使用 `http://localhost` 或 `http://127.0.0.1`。
+如果没有显式设置 `credentialEncryptionKey`，服务会兼容性地使用 `adminPassword` 加密；正式部署仍建议配置独立随机密钥。部署后不要随意更换用于加密的值，否则已保存的家庭 API Key 将无法解密，需要家庭创建者重新填写。使用其他 OpenAI-compatible 服务时，家庭创建者可在页面把 Base URL 改为供应商提供的 `/v1` 地址。远程地址必须使用 HTTPS，本机模型服务可使用 `http://localhost` 或 `http://127.0.0.1`。
 
-未配置个人模型的账号仍可使用其他功能，概览和助手页面会提示用户前往自己的设置页面。当前内置 Agent 统一使用 Chat Completions API，官方 OpenAI 与兼容服务使用同一套 `tool_calls` / `role: tool` 消息协议。
+未配置家庭模型时仍可使用其他功能，概览和助手页面会提示联系家庭创建者。当前内置 Agent 统一使用 Chat Completions API，官方 OpenAI 与兼容服务使用同一套 `tool_calls` / `role: tool` 消息协议。
 
 助手支持食材的批量查询、新增、修改和删除，并以安全 Markdown 显示标题、列表、表格、引用和代码。用户表达“刚买了”等新购语义但没有提供日期时，助手会先用文本给出可修改的购买日、保鲜天数和到期日草稿，用户明确确认后才新增。删除操作由系统执行层生成五分钟有效的确认卡，卡片展示食材名称、分类、数量和到期日；只有当前登录用户确认后才会在一个数据库事务中执行。历史对话可以在列表中单独删除，删除时会同时清理其消息、隐藏工具轨迹和未完成确认操作。工具调用及其结构化结果会作为隐藏协议消息持久化，用于后续模型上下文，但不会显示成页面对话；历史窗口会丢弃开头不完整的 assistant/tool 片段，保证第一条历史消息是 user。第一期只支持文字输入，不申请麦克风权限，也不上传音频。
 
