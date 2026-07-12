@@ -9,6 +9,21 @@ ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件。
 - `esp32_epaper_fridge_tracker/`：ESP32-C3/S3 统一固件，支持 `800x480`
   四色屏及 E042A13 / GDEY042Z98 `400x300` 三色屏。
 
+## 无需自己部署
+
+如果没有自己的服务器，可以直接使用公共托管服务：
+
+```text
+https://fridge.followllm.online
+```
+
+打开页面注册个人账号，在“设备”页面生成一次性配对码。连接设备创建的
+`XianZhiTie-xxxxxx` 热点并打开 `http://192.168.4.1`，填写家里 Wi-Fi、
+服务地址 `https://fridge.followllm.online` 和配对码即可完成绑定。
+
+每个账号的食材、设备、访问令牌和模型配置相互隔离。内置助手使用的模型
+API Key 仍由用户在“用户 → 我的模型”中自行配置。
+
 ## 本地启动服务端
 
 需要 Node.js 22.5 或更高版本。
@@ -30,7 +45,9 @@ cp config.example.json config.json
 
 `config.json`、SQLite 数据库、`node_modules/` 和日志文件都已被 Git 忽略。
 
-## 本地部署流程
+## 自己部署服务
+
+需要完全控制数据和服务运行环境时，可以按以下流程在本地或自己的服务器部署。
 
 1. 复制 `fridge_tracker_server/config.example.json` 为 `config.json`，修改管理员密码和演示设备 token。
 2. 如果实体 ESP32 需要访问 Mac，把 `config.json` 中的 `host` 改为 `0.0.0.0`，然后重启服务。

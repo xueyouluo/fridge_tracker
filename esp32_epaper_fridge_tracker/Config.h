@@ -28,7 +28,7 @@ static const char* PANEL_PROFILE = "gdem075f52";
 
 static const char* DEVICE_NAME = FRIDGE_DEVICE_NAME;
 static const char* PROVISIONING_AP_PREFIX = "XianZhiTie-";
-static const char* DEFAULT_API_BASE_URL = "http://192.168.0.2:8788";
+static const char* DEFAULT_API_BASE_URL = "https://fridge.followllm.online";
 static const uint8_t PROVISIONING_AP_CHANNEL = 1;
 static const uint8_t PROVISIONING_AP_MAX_CLIENTS = 4;
 

@@ -10,6 +10,19 @@
 - 提供带个人访问令牌认证的 Streamable HTTP MCP，让 Codex 等 Agent 管理当前用户的食材。
 - 可选启用内置文字 Agent，通过多轮对话批量查询或修改食材；删除操作必须二次确认。
 
+## 公共托管服务
+
+没有自己的服务器时，可以直接使用：
+
+```text
+https://fridge.followllm.online
+```
+
+打开页面注册个人账号后，即可管理食材、生成设备配对码和创建个人 MCP
+访问令牌。ESP32 配网页的服务地址填写
+`https://fridge.followllm.online`。每个账号的数据、设备、令牌和模型配置
+相互隔离；内置 Agent 的 API Key、模型 ID 和 Base URL 仍由各用户自行配置。
+
 ## 本地启动
 
 需要 Node.js 22.5 或更高版本。
@@ -69,6 +82,12 @@ cp config.example.json config.json
 
 ```text
 http://127.0.0.1:8788/mcp
+```
+
+使用公共托管服务时，MCP 地址为：
+
+```text
+https://fridge.followllm.online/mcp
 ```
 
 Codex 的 `~/.codex/config.toml` 示例：
