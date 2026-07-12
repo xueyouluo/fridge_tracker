@@ -1,0 +1,97 @@
+{
+  "jobs": [
+    {
+      "input": "models/ink_frame_v1/ink_frame_assembly.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/ink_frame_v1/review/assembly_iso.png",
+          "camera": "iso"
+        },
+        {
+          "path": "models/ink_frame_v1/review/assembly_iso_opposite.png",
+          "camera": {
+            "direction": [-1, 1, -0.8]
+          }
+        },
+        {
+          "path": "models/ink_frame_v1/review/assembly_top.png",
+          "camera": "top"
+        },
+        {
+          "path": "models/ink_frame_v1/review/assembly_front.png",
+          "camera": "front"
+        }
+      ],
+      "display": {
+        "mode": "solid"
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.12,
+        "sizeProfile": "assembly"
+      }
+    },
+    {
+      "input": "models/ink_frame_v1/ink_frame_assembly.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/ink_frame_v1/review/assembly_transparent.png",
+          "camera": "iso"
+        }
+      ],
+      "display": {
+        "mode": "transparent"
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.12,
+        "sizeProfile": "assembly"
+      }
+    },
+    {
+      "input": "models/ink_frame_v1/ink_frame_assembly.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/ink_frame_v1/review/assembly_exploded.png",
+          "camera": "iso"
+        }
+      ],
+      "display": {
+        "mode": "solid",
+        "exploded": {
+          "enabled": true,
+          "axis": "z",
+          "spacing": 1.4
+        }
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.16,
+        "sizeProfile": "assembly-large"
+      }
+    },
+    {
+      "input": "models/ink_frame_v1/ink_frame_rear_shell.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/ink_frame_v1/review/rear_shell_open_side.png",
+          "camera": {
+            "direction": [0.4, -0.6, -1]
+          }
+        }
+      ],
+      "display": {
+        "mode": "solid"
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.12,
+        "sizeProfile": "assembly"
+      }
+    }
+  ]
+}

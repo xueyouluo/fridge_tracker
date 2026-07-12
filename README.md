@@ -1,13 +1,29 @@
 # 鲜知贴
 
-多面板电子墨水屏食材保鲜提醒器项目，包含本地服务端，以及同时支持
-ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件。
+多面板电子墨水屏食材保鲜提醒器项目，包含本地服务端、同时支持
+ESP32-C3 Super Mini 和 ESP32-S3 N16R8 的统一固件，以及 4.2 寸设备外壳的
+参数化 CAD 模型。
 
 ## 目录
 
 - `fridge_tracker_server/`：Node.js 本地 H5、API、SQLite 数据及四色/三色屏帧生成服务。
 - `esp32_epaper_fridge_tracker/`：ESP32-C3/S3 统一固件，支持 `800x480`
   四色屏及 E042A13 / GDEY042Z98 `400x300` 三色屏。
+- `models/ink_frame_v1/`：4.2 寸墨水屏外壳的 build123d 参数化源码、STEP
+  装配/零件、STL/3MF 打印文件、设计检查和审图记录。
+
+## 4.2 寸外壳模型
+
+完整装配请打开 `models/ink_frame_v1/ink_frame_assembly.step`；需要在 Fusion
+360 中分别编辑或检查前后壳时，使用同目录下的 `ink_frame_front_bezel.step`
+和 `ink_frame_rear_shell.step`。参数与待复测尺寸见 `CAD_BRIEF.md`，P2S 首版
+打印方向和装配注意事项见 `PRINT_NOTES.md`，再生成与校验方式见该模型目录的
+`README.md`。
+
+如果你也想尝试让大模型根据实物尺寸生成自己的外壳或其他 3D 模型，可以参考
+[模型目录中的设计方法](models/ink_frame_v1/README.md#设计方法全程由大模型完成建模)。
+其中记录了 CAD Skill 的安装方式、硬件测量方法、如何向 coding agent 描述螺丝或
+卡扣结构，以及通过多轮交互、Fusion 360 检查和实际打印逐步调整模型的完整流程。
 
 ## 无需自己部署
 

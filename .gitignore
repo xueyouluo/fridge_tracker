@@ -1,6 +1,11 @@
 .DS_Store
 *.log
 
+.venv/
+**/__pycache__/
+*.pyc
+models/**/.*.step.glb
+
 node_modules/
 coverage/
 dist/
