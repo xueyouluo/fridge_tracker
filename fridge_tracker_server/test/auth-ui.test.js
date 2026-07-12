@@ -73,7 +73,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260712-7/);
+  assert.match(html, /styles\.css\?v=20260712-8/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -121,6 +121,16 @@ test("buttons use a consistent three-level control scale", () => {
   assert.match(css, /\.food-editor-actions button \{ height: var\(--control-height-lg\)/);
   assert.match(css, /\.link \{[\s\S]*min-height: var\(--control-height-sm\)/);
   assert.match(html, /id="leaveHousehold" class="danger-button hidden"/);
+});
+
+test("user page has a dedicated narrow mobile layout", () => {
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  assert.match(css, /\[data-view-panel="users"\] \.page-title h1 \{ font-size: 30px; \}/);
+  assert.match(css, /\.user-layout > \.panel \{[\s\S]*min-width: 0; max-width: 100%; padding: 16px; overflow: hidden;/);
+  assert.match(css, /\.household-member strong \{ grid-column: 1 \/ -1; grid-row: 1; \}/);
+  assert.match(css, /\.household-member \.role-pill \{ grid-column: 1; grid-row: 3;/);
+  assert.match(css, /\.household-actions button, \.household-invite button \{ width: 100%; \}/);
+  assert.match(css, /\.mcp-config pre \{[\s\S]*max-width: 100%;[\s\S]*overscroll-behavior-inline: contain;/);
 });
 
 test("agent markdown tables stay inside the overview card and scroll internally", () => {

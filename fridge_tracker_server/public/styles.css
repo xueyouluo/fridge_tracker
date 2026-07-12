@@ -489,6 +489,9 @@ body.modal-open { overflow: hidden; }
   .collection { order: -1; }
 }
 @media (max-width: 640px) {
+  .session span {
+    max-width: min(28vw, 112px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .topbar {
     min-height: 60px;
     padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
@@ -798,6 +801,36 @@ body.modal-open { overflow: hidden; }
   .ai-settings-form .ai-base-url, .ai-settings-actions { grid-column: 1; }
   .ai-settings-actions { display: grid; grid-template-columns: 1fr 1.4fr; }
   .ai-settings-actions button { min-width: 0; }
+  [data-view-panel="users"] .page-title { gap: 10px; margin: 14px 0 16px; }
+  [data-view-panel="users"] .page-title h1 { font-size: 30px; }
+  .user-layout { gap: 12px; }
+  .user-layout > .panel {
+    min-width: 0; max-width: 100%; padding: 16px; overflow: hidden;
+  }
+  .user-layout .section-head {
+    align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 14px;
+  }
+  .account-summary { gap: 8px; }
+  .account-line { padding: 10px 12px; }
+  .household-members { gap: 8px; margin-top: 12px; }
+  .household-member {
+    grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 11px 12px;
+  }
+  .household-member strong { grid-column: 1 / -1; grid-row: 1; }
+  .household-member small { grid-column: 1 / -1; grid-row: 2; }
+  .household-member .role-pill { grid-column: 1; grid-row: 3; justify-self: start; margin-top: 3px; }
+  .household-member button { grid-column: 2; grid-row: 3; margin-top: 3px; }
+  .household-actions { display: grid; grid-template-columns: 1fr; }
+  .household-actions button, .household-invite button { width: 100%; }
+  .ai-settings-form input, .token-form input { min-width: 0; width: 100%; }
+  .token-copy-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .token-copy-actions button { min-width: 0; padding-inline: 10px; }
+  .token-row div { flex-wrap: wrap; gap: 4px 8px; }
+  .token-row code { max-width: 100%; overflow-wrap: anywhere; }
+  .mcp-config { min-width: 0; max-width: 100%; }
+  .mcp-config pre {
+    max-width: 100%; margin-bottom: 0; font-size: 11px; overscroll-behavior-inline: contain;
+  }
   body.agent-view-active {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -893,4 +926,7 @@ body.modal-open { overflow: hidden; }
   .agent-empty { min-height: 0; }
   .agent-message { max-width: 92%; }
   .token-row { grid-template-columns: 1fr auto; }
+}
+@media (max-width: 380px) {
+  .ai-settings-actions, .token-copy-actions { grid-template-columns: 1fr; }
 }
