@@ -1,6 +1,6 @@
 # 鲜知贴
 
-[项目介绍网站](https://xueyou-diy-lab.yummy-tulip-8164.chatgpt.site/) · [在线体验](https://fridge.followllm.online)
+[项目介绍网站](https://xueyou-diy-lab.yummy-tulip-8164.chatgpt.site/) · [在线体验](https://fridge.followllm.online) · [Roadmap](ROADMAP.md)
 
 把冰箱里的食材、保鲜天数和到期提醒同步到一块低功耗墨水屏上。
 
