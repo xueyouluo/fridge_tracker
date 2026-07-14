@@ -890,6 +890,15 @@ body.voice-recording-open { overflow: hidden; }
 .welcome-agent > strong { font-size: 14px; }
 .welcome-agent-form.agent-compose { margin: 0; background: rgba(255,255,255,.9); }
 .welcome-agent-form.agent-disabled { opacity: .58; }
+.agent-example-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.agent-example-list button {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 10px;
+  border: 1px solid rgba(25, 104, 73, .15); border-radius: 999px; color: #4e6257; background: rgba(255,255,255,.68);
+  font-size: 12px; font-weight: 650; line-height: 1.2;
+}
+.agent-example-list button span { color: var(--green); font-size: 14px; line-height: 1; }
+.agent-example-list button:hover:not(:disabled) { border-color: rgba(25, 104, 73, .34); color: var(--green); background: var(--green-soft); transform: translateY(-1px); }
+.agent-example-list button:disabled { cursor: default; opacity: .48; }
 .overview-agent-result .agent-message { width: 100%; max-width: 100%; }
 .overview-agent-status:empty { display: none; }
 .welcome-manual-add { justify-self: start; margin-top: 9px; padding: 0; }

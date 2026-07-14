@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260714-4"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260714-5"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -52,7 +52,7 @@ test("agent composers support text and pure-voice modes with upward cancel", () 
   assert.equal((html.match(/data-voice-input/g) || []).length, 2);
   assert.equal((html.match(/data-voice-text-surface/g) || []).length, 2);
   assert.equal((html.match(/data-input-mode-toggle/g) || []).length, 2);
-  assert.equal((html.match(/data-input-mode="text"/g) || []).length, 2);
+  assert.equal((html.match(/data-input-mode="voice"/g) || []).length, 2);
   assert.match(html, /aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled/);
   assert.match(html, /id="voiceRecordingOverlay"[\s\S]*松手发送，上移取消[\s\S]*id="voiceRecordingWave"/);
   assert.match(css, /\.agent-compose \{[\s\S]*border-radius: 27px/);
@@ -73,6 +73,7 @@ test("agent composers support text and pure-voice modes with upward cancel", () 
   assert.match(app, /pointerPress\.startY - event\.clientY >= VOICE_CANCEL_DISTANCE_PX/);
   assert.match(app, /setVoiceRecordingCancelState\(controller, cancelling\)/);
   assert.match(app, /form\.dataset\.inputMode === "voice" \? "text" : "voice"/);
+  assert.match(app, /setInputMode\("voice"\)/);
   assert.match(app, /正在录音，松开发送/);
   assert.match(app, /\/api\/agent\/transcriptions/);
   assert.match(app, /textarea\.dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\)/);
@@ -80,6 +81,22 @@ test("agent composers support text and pure-voice modes with upward cancel", () 
   assert.doesNotMatch(app, /webkitSpeechRecognition/);
   assert.match(app, /setupVoiceInput\(\$\("#agentForm"\)\)/);
   assert.match(app, /setupVoiceInput\(\$\("#overviewAgentForm"\)\)/);
+});
+
+test("overview hides remaining quota and offers direct-send example prompts", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  assert.equal((html.match(/data-agent-example=/g) || []).length, 5);
+  assert.match(html, />添加牛奶<\/button>/);
+  assert.match(html, />查询临期<\/button>/);
+  assert.match(html, />修改数量<\/button>/);
+  assert.match(html, />删除记录<\/button>/);
+  assert.match(html, />今天吃什么<\/button>/);
+  assert.match(css, /\.agent-example-list \{ display: flex; flex-wrap: wrap;/);
+  assert.match(app, /example\.dataset\.agentExample/);
+  assert.match(app, /setOverviewExamplesAvailability\(false\)/);
+  assert.doesNotMatch(app, /系统额度剩余/);
 });
 
 test("mobile agent view keeps chat full-height and collapses the conversation list", () => {
@@ -100,7 +117,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260714-4/);
+  assert.match(html, /styles\.css\?v=20260714-5/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -114,7 +131,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260714-4/);
+  assert.match(html, /app\.js\?v=20260714-5/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);

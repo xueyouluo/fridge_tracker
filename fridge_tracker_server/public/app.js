@@ -16,7 +16,7 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview" };
 const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
@@ -714,6 +714,9 @@ async function loadAiSettings() {
 async function loadVoiceSettings() {
   const result = await api("/api/agent/voice-settings");
   state.voiceConfigured = result.configured;
+  if (!result.configured) {
+    [$("#agentForm"), $("#overviewAgentForm")].forEach((form) => voiceControllers.get(form)?.switchMode("text"));
+  }
   [$("#agentForm"), $("#overviewAgentForm")].forEach(updateVoiceButtonAvailability);
 }
 
@@ -729,15 +732,14 @@ async function loadConversations() {
     : result.mode === "system"
       ? result.quota.remaining > 0 ? `系统 Agent 已连接 · 剩余 ${result.quota.remaining} 次` : "系统输入额度已用完"
       : "Agent 未配置";
-  $("#overviewAgentStatus").textContent = result.mode === "personal"
-    ? "正在使用个人 API Key，不消耗系统输入额度。"
-    : result.mode === "system"
-      ? result.quota.remaining > 0
-        ? `系统额度剩余 ${result.quota.remaining} / ${result.quota.limit} 次输入`
-        : "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
-      : "Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent。";
+  $("#overviewAgentStatus").textContent = result.mode === "system" && result.quota.remaining <= 0
+    ? "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
+    : result.mode === "unconfigured"
+      ? "Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent。"
+      : "";
   setAgentFormAvailability($("#agentForm"), available);
   setAgentFormAvailability($("#overviewAgentForm"), available);
+  setOverviewExamplesAvailability(available);
   if (!result.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
     state.activeConversationId = result.conversations[0]?.id || null;
   }
@@ -1466,6 +1468,7 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
   const voiceButton = event.target.querySelector("[data-voice-input]");
   textarea.disabled = true;
   button.disabled = true;
+  setOverviewExamplesAvailability(false);
   if (voiceButton) updateVoiceButtonAvailability(event.target);
   $("#overviewAgentResult").classList.remove("hidden");
   $("#overviewAgentResult").innerHTML = `<article class="agent-message assistant thinking"><div>正在处理…</div></article>`;
@@ -1482,8 +1485,20 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
     textarea.disabled = !isAgentAvailable();
     button.disabled = !isAgentAvailable();
     if (voiceButton) updateVoiceButtonAvailability(event.target);
+    setOverviewExamplesAvailability(isAgentAvailable());
     textarea.focus();
   }
+});
+
+document.querySelector(".agent-example-list").addEventListener("click", (event) => {
+  const example = event.target.closest("[data-agent-example]");
+  if (!example || example.disabled) return;
+  const form = $("#overviewAgentForm");
+  const textarea = form.elements.content;
+  if (textarea.disabled) return;
+  textarea.value = example.dataset.agentExample;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  form.requestSubmit();
 });
 
 async function handleAgentActionClick(event) {
@@ -1564,6 +1579,12 @@ function setAgentFormAvailability(form, available) {
   updateVoiceButtonAvailability(form);
 }
 
+function setOverviewExamplesAvailability(available) {
+  document.querySelectorAll("[data-agent-example]").forEach((button) => {
+    button.disabled = !available;
+  });
+}
+
 function updateVoiceButtonAvailability(form) {
   const button = form.querySelector("[data-voice-input]");
   const modeToggle = form.querySelector("[data-input-mode-toggle]");
@@ -1571,10 +1592,10 @@ function updateVoiceButtonAvailability(form) {
   const controller = voiceControllers.get(form);
   const processing = controller?.isProcessing() === true;
   const formUnavailable = form.querySelector("textarea")?.disabled === true;
-  const voiceUnavailable = !controller || formUnavailable || !state.agentConfigured || !state.voiceConfigured || processing;
+  const voiceUnavailable = !controller || formUnavailable || !state.agentConfigured || state.voiceConfigured !== true || processing;
   button.disabled = voiceUnavailable;
   if (modeToggle) modeToggle.disabled = voiceUnavailable;
-  button.title = !state.voiceConfigured
+  button.title = state.voiceConfigured === false
     ? "系统语音识别尚未配置"
     : "按住说话，松开发送";
 }
@@ -1650,8 +1671,10 @@ function setupVoiceInput(form) {
   const submitButton = form.querySelector('[type="submit"]');
   const recordingSupported = Boolean(button && textSurface && modeToggle && status && navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   if (!recordingSupported) {
+    form.dataset.inputMode = "text";
     if (modeToggle) {
       modeToggle.disabled = true;
+      modeToggle.setAttribute("aria-label", "当前浏览器不支持网页录音");
       modeToggle.title = "当前浏览器不支持网页录音";
     }
     return;
@@ -1785,6 +1808,9 @@ function setupVoiceInput(form) {
     },
     isProcessing() {
       return processing;
+    },
+    switchMode(mode, options) {
+      setInputMode(mode, options);
     }
   };
   voiceControllers.set(form, controller);
@@ -1973,7 +1999,7 @@ function setupVoiceInput(form) {
     setInputMode(form.dataset.inputMode === "voice" ? "text" : "voice", { focus: form.dataset.inputMode === "voice" });
   });
   button.hidden = false;
-  setInputMode("text");
+  setInputMode("voice");
   updateVoiceButtonAvailability(form);
 }
 

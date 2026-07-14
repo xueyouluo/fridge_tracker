@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>鲜知贴</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=20260714-4">
+  <link rel="stylesheet" href="/styles.css?v=20260714-5">
 </head>
 <body>
   <header class="topbar">
@@ -78,7 +78,7 @@
             <p id="todayText" class="muted"></p>
             <div class="welcome-agent">
               <strong>直接告诉助手你想做什么</strong>
-              <form id="overviewAgentForm" class="welcome-agent-form agent-compose agent-compose-overview" data-input-mode="text">
+              <form id="overviewAgentForm" class="welcome-agent-form agent-compose agent-compose-overview" data-input-mode="voice">
                 <div class="agent-input-surface" data-voice-text-surface>
                   <textarea name="content" maxlength="4000" rows="1" placeholder="发消息或按住说话…" required></textarea>
                 </div>
@@ -90,11 +90,18 @@
                 <button class="agent-send" type="submit" aria-label="发送消息">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
                 </button>
-                <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到纯语音输入">
+                <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到文本输入">
                   <svg class="mode-icon-voice" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4m4-7v10m4-13v16m4-12v8m4-5v2"/></svg>
                   <svg class="mode-icon-text" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
                 </button>
               </form>
+              <div class="agent-example-list" aria-label="示例对话">
+                <button type="button" data-agent-example="帮我添加一盒牛奶，7 月 20 日到期" title="帮我添加一盒牛奶，7 月 20 日到期" disabled><span>＋</span>添加牛奶</button>
+                <button type="button" data-agent-example="冰箱里有哪些三天内到期的食材？" title="冰箱里有哪些三天内到期的食材？" disabled><span>⌕</span>查询临期</button>
+                <button type="button" data-agent-example="把牛奶的数量改成 2 盒" title="把牛奶的数量改成 2 盒" disabled><span>✎</span>修改数量</button>
+                <button type="button" data-agent-example="删除已经吃完的牛奶" title="删除已经吃完的牛奶" disabled><span>−</span>删除记录</button>
+                <button type="button" data-agent-example="根据冰箱现有食材，今天可以做什么菜？" title="根据冰箱现有食材，今天可以做什么菜？" disabled><span>⌁</span>今天吃什么</button>
+              </div>
               <div id="overviewAgentResult" class="overview-agent-result hidden" aria-live="polite"></div>
               <span id="overviewAgentStatus" class="overview-agent-status muted"></span>
             </div>
@@ -329,7 +336,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
             <div id="agentMessages" class="agent-messages" aria-live="polite">
               <div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>
             </div>
-            <form id="agentForm" class="agent-compose" data-input-mode="text">
+            <form id="agentForm" class="agent-compose" data-input-mode="voice">
               <div class="agent-input-surface" data-voice-text-surface>
                 <textarea name="content" maxlength="4000" rows="1" placeholder="发消息或按住说话…" required></textarea>
               </div>
@@ -341,7 +348,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
               <button class="agent-send" type="submit" aria-label="发送消息">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
               </button>
-              <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到纯语音输入">
+              <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到文本输入">
                 <svg class="mode-icon-voice" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4m4-7v10m4-13v16m4-12v8m4-5v2"/></svg>
                 <svg class="mode-icon-text" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
               </button>
@@ -481,6 +488,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260714-4"></script>
+  <script src="/app.js?v=20260714-5"></script>
 </body>
 </html>
