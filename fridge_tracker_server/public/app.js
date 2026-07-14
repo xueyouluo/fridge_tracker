@@ -13,7 +13,7 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, activeConversationId: null, agentConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, canManageUsers: false, today: "", editingId: null, view: "overview" };
 const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
@@ -635,7 +635,10 @@ async function loadUsers() {
   state.user = result.currentUser;
   state.users = result.users;
   state.canManageUsers = result.canManageUsers;
-  $("#userCount").textContent = `${result.users.length} 位用户`;
+  $("#userLayout").classList.toggle("is-admin", result.canManageUsers);
+  $("#userCount").classList.toggle("hidden", !result.canManageUsers);
+  $("#registeredUsersCard").classList.toggle("hidden", !result.canManageUsers);
+  $("#userCount").textContent = result.canManageUsers ? `${result.users.length} 位用户` : "";
   $("#userScope").textContent = result.canManageUsers ? "管理员可查看全部账号" : "仅显示当前账号";
   $("#accountRole").textContent = roleText(result.currentUser.role);
   $("#accountRole").className = `role-pill ${result.currentUser.role === "admin" ? "admin" : "member"}`;
@@ -661,17 +664,14 @@ async function loadAiSettings() {
   const result = await api("/api/agent/settings");
   state.aiSettings = result;
   const form = $("#aiSettingsForm");
-  const canManage = result.canManage === true;
-  form.classList.toggle("hidden", !canManage);
-  $("#aiSettingsHint").textContent = canManage
-    ? "这套配置供整个家庭使用，API Key 会加密保存且不会再次回显。"
-    : result.configured
-      ? "家庭创建者已配置 Agent，你可以直接在概览或助手页面使用。"
-      : "家庭 Agent 尚未配置，请联系家庭创建者完成模型设置。";
+  $("#aiSettingsHint").textContent = result.configured
+    ? "当前优先使用你的个人配置，不消耗系统输入额度；API Key 不会再次回显。"
+    : result.systemConfigured
+      ? "当前使用管理员提供的系统 Agent；填写个人配置后会自动优先使用你的 API Key。"
+      : "系统 Agent 尚未配置，你可以填写自己的 API Key 后立即使用。";
   $("#aiSettingsState").textContent = result.configured
-    ? (canManage ? `已配置 ${result.apiKeyHint}` : "家庭已配置")
-    : "未配置";
-  if (!canManage) return;
+    ? `个人配置 ${result.apiKeyHint}`
+    : result.systemConfigured ? "使用系统配置" : "未配置";
   form.elements.openaiApiKey.value = "";
   form.elements.openaiApiKey.placeholder = result.configured
     ? `${result.apiKeyHint}（留空保留）`
@@ -679,24 +679,53 @@ async function loadAiSettings() {
   form.elements.openaiModel.value = result.openaiModel || "";
   form.elements.openaiBaseUrl.value = result.openaiBaseUrl || "https://api.openai.com/v1";
   $("#clearAiSettings").disabled = !result.configured;
+
+  const systemCard = $("#systemAiSettingsCard");
+  const systemForm = $("#systemAiSettingsForm");
+  systemCard.classList.toggle("hidden", !state.user?.isAdmin);
+  if (!state.user?.isAdmin) {
+    state.systemAiSettings = { configured: result.systemConfigured };
+    return;
+  }
+
+  const system = await api("/api/admin/agent/settings");
+  state.systemAiSettings = system;
+  $("#systemAiSettingsState").textContent = system.configured ? `已配置 ${system.apiKeyHint}` : "未配置";
+  $("#systemAiSettingsHint").textContent = "这套配置供未设置个人 API Key 的注册用户使用，API Key 不会再次回显。";
+  systemForm.elements.openaiApiKey.value = "";
+  systemForm.elements.openaiApiKey.placeholder = system.configured
+    ? `${system.apiKeyHint}（留空保留）`
+    : "首次配置必填";
+  systemForm.elements.openaiModel.value = system.openaiModel || "";
+  systemForm.elements.openaiBaseUrl.value = system.openaiBaseUrl || "https://api.openai.com/v1";
+  $("#clearSystemAiSettings").disabled = !system.configured;
 }
 
 async function loadConversations() {
   const result = await api("/api/agent/conversations");
   state.agentConfigured = result.configured;
+  state.agentMode = result.mode;
+  state.agentQuota = result.quota;
   state.conversations = result.conversations;
-  $("#agentStatus").textContent = result.configured ? "模型已连接" : "Agent 未配置";
-  $("#overviewAgentStatus").textContent = result.configured
-    ? ""
-    : state.household?.permissions.manageMembers
-      ? "家庭 Agent 未配置，请在用户页面完成模型设置。"
-      : "家庭 Agent 未配置，请联系家庭创建者完成模型设置。";
-  $("#agentForm").classList.toggle("agent-disabled", !result.configured);
-  $("#agentForm").querySelector("textarea").disabled = !result.configured;
-  $("#agentForm").querySelector("button").disabled = !result.configured;
-  $("#overviewAgentForm").classList.toggle("agent-disabled", !result.configured);
-  $("#overviewAgentForm").querySelector("textarea").disabled = !result.configured;
-  $("#overviewAgentForm").querySelector("button").disabled = !result.configured;
+  const available = isAgentAvailable();
+  $("#agentStatus").textContent = result.mode === "personal"
+    ? "个人 Agent 已连接 · 不消耗系统额度"
+    : result.mode === "system"
+      ? result.quota.remaining > 0 ? `系统 Agent 已连接 · 剩余 ${result.quota.remaining} 次` : "系统输入额度已用完"
+      : "Agent 未配置";
+  $("#overviewAgentStatus").textContent = result.mode === "personal"
+    ? "正在使用个人 API Key，不消耗系统输入额度。"
+    : result.mode === "system"
+      ? result.quota.remaining > 0
+        ? `系统额度剩余 ${result.quota.remaining} / ${result.quota.limit} 次输入`
+        : "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
+      : "Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent。";
+  $("#agentForm").classList.toggle("agent-disabled", !available);
+  $("#agentForm").querySelector("textarea").disabled = !available;
+  $("#agentForm").querySelector("button").disabled = !available;
+  $("#overviewAgentForm").classList.toggle("agent-disabled", !available);
+  $("#overviewAgentForm").querySelector("textarea").disabled = !available;
+  $("#overviewAgentForm").querySelector("button").disabled = !available;
   if (!result.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
     state.activeConversationId = result.conversations[0]?.id || null;
   }
@@ -810,11 +839,16 @@ function roleText(role) {
   return role === "admin" ? "管理员" : "成员";
 }
 
+function isAgentAvailable() {
+  return state.agentMode === "personal" || (state.agentMode === "system" && Number(state.agentQuota?.remaining || 0) > 0);
+}
+
 function renderAccount(user) {
   return `
     <div class="account-line"><span>显示名</span><strong>${escapeHtml(displayName(user))}</strong></div>
     <div class="account-line"><span>邮箱</span><strong>${escapeHtml(user.email || "未设置")}</strong></div>
     <div class="account-line"><span>账号</span><strong>${escapeHtml(user.login)}</strong></div>
+    <div class="account-line"><span>Agent 输入额度</span><strong>${escapeHtml(user.agentQuota?.remaining ?? 0)} / ${escapeHtml(user.agentQuota?.limit ?? 0)} 次</strong></div>
     <div class="account-line"><span>注册时间</span><strong>${escapeHtml(formatDate(user.createdAt))}</strong></div>
   `;
 }
@@ -827,8 +861,14 @@ function renderUser(user) {
     <div class="user-meta">
       <span>${escapeHtml(user.foodCount ?? 0)} 项食材</span>
       <span>${escapeHtml(user.deviceCount ?? 0)} 台设备</span>
+      <span>Agent 剩余 ${escapeHtml(user.agentQuota?.remaining ?? 0)} / ${escapeHtml(user.agentQuota?.limit ?? 0)} 次</span>
       <span>${escapeHtml(formatDate(user.createdAt))}</span>
     </div>
+    ${state.canManageUsers ? `<form class="quota-form" data-user-quota="${user.id}">
+      <label>总额度 <input name="limit" type="number" min="0" max="1000000" step="1" value="${escapeHtml(user.agentQuota?.limit ?? 100)}" required></label>
+      <span>已用 ${escapeHtml(user.agentQuota?.used ?? 0)} 次</span>
+      <button class="quiet" type="submit">保存额度</button>
+    </form>` : ""}
   </article>`;
 }
 
@@ -1200,7 +1240,7 @@ $("#aiSettingsForm").addEventListener("submit", async (event) => {
       })
     });
     await Promise.all([loadAiSettings(), loadConversations()]);
-    toast("模型配置已保存");
+    toast("个人模型配置已保存");
   } catch (error) {
     toast(error.message);
   } finally {
@@ -1208,20 +1248,88 @@ $("#aiSettingsForm").addEventListener("submit", async (event) => {
   }
 });
 
+$("#useDeepSeekPreset").addEventListener("click", () => {
+  const form = $("#aiSettingsForm");
+  form.elements.openaiModel.value = "deepseek-v4-flash";
+  form.elements.openaiBaseUrl.value = "https://api.deepseek.com";
+  form.elements.openaiApiKey.focus();
+  toast("已填入 DeepSeek 参数，请粘贴 API Key");
+});
+
 $("#clearAiSettings").addEventListener("click", async () => {
   const confirmed = await confirmDialog({
-    title: "清除模型配置？",
-    body: "清除后，所有家庭成员都将无法使用 Agent；每个人已有的历史对话不会删除。",
-    confirmText: "清除",
-    tone: "danger"
+    title: "改用系统 Agent？",
+    body: "你的个人 API Key 和模型配置会被清除；历史对话不会删除。之后将使用系统 Agent 和个人系统额度。",
+    confirmText: "改用系统配置"
   });
   if (!confirmed) return;
   try {
     await api("/api/agent/settings", { method: "DELETE" });
     await Promise.all([loadAiSettings(), loadConversations()]);
-    toast("模型配置已清除");
+    toast("已改用系统 Agent");
   } catch (error) {
     toast(error.message);
+  }
+});
+
+$("#systemAiSettingsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const data = new FormData(event.target);
+    await api("/api/admin/agent/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        openaiApiKey: data.get("openaiApiKey"),
+        openaiModel: data.get("openaiModel"),
+        openaiBaseUrl: data.get("openaiBaseUrl")
+      })
+    });
+    await Promise.all([loadAiSettings(), loadConversations()]);
+    toast("系统 Agent 配置已保存");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#clearSystemAiSettings").addEventListener("click", async () => {
+  const confirmed = await confirmDialog({
+    title: "清除系统 Agent？",
+    body: "清除后，未设置个人 API Key 的用户将无法使用 Agent；个人配置和历史对话不会删除。",
+    confirmText: "清除系统配置",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+  try {
+    await api("/api/admin/agent/settings", { method: "DELETE" });
+    await Promise.all([loadAiSettings(), loadConversations()]);
+    toast("系统 Agent 配置已清除");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#users").addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-user-quota]");
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector("button");
+  button.disabled = true;
+  try {
+    const data = new FormData(form);
+    await api(`/api/users/${encodeURIComponent(form.dataset.userQuota)}/agent-quota`, {
+      method: "PATCH",
+      body: JSON.stringify({ limit: Number(data.get("limit")) })
+    });
+    await Promise.all([loadUsers(), loadConversations()]);
+    toast("Agent 额度已更新");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -1325,8 +1433,8 @@ $("#agentForm").addEventListener("submit", async (event) => {
     $("#agentThinking")?.remove();
     toast(error.message);
   } finally {
-    textarea.disabled = !state.agentConfigured;
-    button.disabled = !state.agentConfigured;
+    textarea.disabled = !isAgentAvailable();
+    button.disabled = !isAgentAvailable();
     textarea.focus();
   }
 });
@@ -1351,8 +1459,8 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
     $("#overviewAgentResult").innerHTML = `<div class="agent-quick-error">${escapeHtml(error.message)}</div>`;
     toast(error.message);
   } finally {
-    textarea.disabled = !state.agentConfigured;
-    button.disabled = !state.agentConfigured;
+    textarea.disabled = !isAgentAvailable();
+    button.disabled = !isAgentAvailable();
     textarea.focus();
   }
 });

@@ -378,7 +378,7 @@ body.modal-open { overflow: hidden; }
 .device strong { color: var(--ink); }
 .status-dot { color: var(--green); font-size: 13px; }
 .status-dot::before { content: ""; display: inline-block; width: 8px; height: 8px; background: #45b676; border-radius: 50%; margin-right: 7px; }
-.user-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
+.user-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .account-summary { display: grid; gap: 12px; }
 .account-line {
   display: grid; gap: 4px; padding: 13px 14px; border-radius: 13px; background: #f8faf7;
@@ -405,6 +405,17 @@ body.modal-open { overflow: hidden; }
   padding: 4px 8px; border-radius: 8px; color: var(--muted); background: var(--surface);
   font-size: 12px; font-weight: 650;
 }
+.quota-form {
+  grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end; gap: 9px; margin-top: 7px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.quota-form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 680; }
+.quota-form input { min-width: 0; width: 100%; height: var(--control-height-sm); padding: 0 10px; }
+.quota-form > span {
+  display: flex; align-items: center; align-self: end; height: var(--control-height-sm);
+  color: var(--muted); font-size: 12px; white-space: nowrap;
+}
+.quota-form button { align-self: end; height: var(--control-height-sm); padding-inline: 12px; white-space: nowrap; }
 .household-members { display: grid; gap: 9px; margin-top: 14px; }
 .household-card, .household-card .section-head, #householdName { min-width: 0; }
 #householdName { overflow-wrap: anywhere; }
@@ -758,19 +769,44 @@ body.modal-open { overflow: hidden; }
   grid-template-columns: minmax(320px, .8fr) minmax(460px, 1.2fr);
   grid-template-areas:
     "account household"
+    "personal personal"
+    "token token";
+}
+.user-layout.is-admin {
+  grid-template-areas:
+    "account household"
     "users users"
-    "ai ai"
+    "system personal"
     "token token";
 }
 .user-layout > .account-card { grid-area: account; }
 .user-layout > .household-card { grid-area: household; }
 .user-layout > .collection { grid-area: users; }
-.user-layout > .ai-settings-card { grid-area: ai; }
+.user-layout > .system-ai-settings-card { grid-area: system; }
+.user-layout > .personal-ai-settings-card { grid-area: personal; }
 .user-layout > .token-card { grid-area: token; }
 .ai-settings-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .ai-settings-form .ai-base-url { grid-column: 1 / -1; }
 .ai-settings-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; }
 .ai-settings-actions button { min-width: 130px; }
+.ai-provider-guide {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px;
+  align-items: center; margin: 16px 0; padding: 14px 15px;
+  border: 1px solid #d8e9de; border-radius: 14px; background: var(--green-soft);
+}
+.ai-provider-guide > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.ai-provider-guide strong { font-size: 14px; }
+.ai-provider-guide span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.ai-provider-guide > a { color: var(--green); font-size: 13px; font-weight: 720; white-space: nowrap; }
+.ai-provider-preset {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding-top: 11px; border-top: 1px solid rgba(27, 111, 75, .14);
+}
+.ai-provider-preset code {
+  padding: 6px 8px; border-radius: 8px; color: var(--ink); background: rgba(255,255,255,.72);
+  font-size: 12px; overflow-wrap: anywhere;
+}
+.ai-provider-preset button { margin-left: auto; }
 .welcome, .welcome-agent, .overview-agent-result { min-width: 0; }
 .welcome-agent { display: grid; gap: 9px; margin-top: 24px; }
 .welcome-agent > strong { font-size: 14px; }
@@ -789,7 +825,10 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 960px) {
   .user-layout {
     grid-template-columns: 1fr;
-    grid-template-areas: "account" "household" "users" "ai" "token";
+    grid-template-areas: "account" "household" "personal" "token";
+  }
+  .user-layout.is-admin {
+    grid-template-areas: "account" "household" "users" "system" "personal" "token";
   }
   .agent-layout { grid-template-columns: 1fr; min-height: 0; }
   .conversation-panel { max-height: 230px; overflow-y: auto; }
@@ -801,6 +840,10 @@ body.modal-open { overflow: hidden; }
   .ai-settings-form .ai-base-url, .ai-settings-actions { grid-column: 1; }
   .ai-settings-actions { display: grid; grid-template-columns: 1fr 1.4fr; }
   .ai-settings-actions button { min-width: 0; }
+  .ai-provider-guide { grid-template-columns: 1fr; }
+  .ai-provider-guide > a { justify-self: start; }
+  .ai-provider-preset { grid-column: 1; display: grid; }
+  .ai-provider-preset button { width: 100%; margin-left: 0; }
   [data-view-panel="users"] .page-title { gap: 10px; margin: 14px 0 16px; }
   [data-view-panel="users"] .page-title h1 { font-size: 30px; }
   .user-layout { gap: 12px; }
@@ -812,6 +855,14 @@ body.modal-open { overflow: hidden; }
   }
   .account-summary { gap: 8px; }
   .account-line { padding: 10px 12px; }
+  .quota-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "limit limit" "usage save";
+    align-items: center;
+  }
+  .quota-form label { grid-area: limit; }
+  .quota-form > span { grid-area: usage; align-self: center; height: var(--control-height-md); }
+  .quota-form button { grid-area: save; align-self: center; height: var(--control-height-md); }
   .household-members { gap: 8px; margin-top: 12px; }
   .household-member {
     grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 11px 12px;

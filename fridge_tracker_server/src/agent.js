@@ -23,7 +23,7 @@ function summarizeActions(actions) {
   }).join("、");
 }
 
-function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resolveRuntime, resolveHouseholdId = (userId) => userId, apiKey, model, baseURL, client, clientFactory }) {
+function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resolveRuntime, resolveHouseholdId = (userId) => userId, consumeInput, getQuota, apiKey, model, baseURL, client, clientFactory }) {
   function householdIdFor(userId) {
     return resolveHouseholdId(userId);
   }
@@ -319,7 +319,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
   async function sendMessage(userId, conversationId, content) {
     const runtime = runtimeFor(userId);
     if (!runtime) {
-      const error = new Error("家庭 Agent 未配置，请由家庭创建者在用户页面填写模型 API Key、模型和 Base URL");
+      const error = new Error("Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent");
       error.statusCode = 503;
       throw error;
     }
@@ -327,12 +327,15 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
     const conversation = requireConversation(userId, conversationId);
     const text = String(content || "").trim().slice(0, 4000);
     if (!text) throw new Error("message is required");
+    const quota = runtime.mode === "personal"
+      ? (getQuota ? getQuota(userId) : null)
+      : consumeInput ? consumeInput(userId) : (getQuota ? getQuota(userId) : null);
     saveMessage(conversationId, "user", text);
     if (conversation.title === "新对话") db.prepare("UPDATE agent_conversations SET title = ? WHERE id = ?").run(text.slice(0, 30), conversationId);
     const result = await runChat(userId, conversationId, recentHistory(conversationId), ai, runtime.model);
     const metadata = { events: result.events };
     const message = saveMessage(conversationId, "assistant", result.text, metadata);
-    return { message, events: result.events };
+    return { message, events: result.events, mode: runtime.mode || "system", ...(quota ? { quota } : {}) };
   }
 
   async function resolvePending(userId, id, confirm) {

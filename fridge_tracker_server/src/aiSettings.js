@@ -49,12 +49,15 @@ function publicSettings(row) {
 function createAiSettingsService(db, secret) {
   if (!secret) throw new Error("credentialEncryptionKey is required");
 
-  function getSettings(householdId) {
-    return publicSettings(db.prepare("SELECT * FROM household_ai_settings WHERE household_id = ?").get(householdId));
+  function getSystemSettings() {
+    return publicSettings(db.prepare("SELECT * FROM system_ai_settings WHERE id = 1").get());
   }
 
-  function saveSettings(householdId, userId, input) {
-    const existing = db.prepare("SELECT * FROM household_ai_settings WHERE household_id = ?").get(householdId);
+  function getUserSettings(userId) {
+    return publicSettings(db.prepare("SELECT * FROM user_ai_settings WHERE user_id = ?").get(userId));
+  }
+
+  function normalizedValues(existing, input) {
     const apiKey = String(input.openaiApiKey || "").trim();
     const model = String(input.openaiModel || "").trim().slice(0, 120);
     const baseUrl = normalizeBaseUrl(input.openaiBaseUrl);
@@ -62,32 +65,58 @@ function createAiSettingsService(db, secret) {
     if (!apiKey && !existing) throw new Error("openaiApiKey is required");
     const encrypted = apiKey ? encryptSecret(apiKey, secret) : existing.api_key_encrypted;
     const hint = apiKey ? `••••${apiKey.slice(-4)}` : existing.api_key_hint;
-    const now = new Date().toISOString();
+    return { encrypted, hint, model, baseUrl, now: new Date().toISOString() };
+  }
+
+  function saveSystemSettings(userId, input) {
+    const existing = db.prepare("SELECT * FROM system_ai_settings WHERE id = 1").get();
+    const values = normalizedValues(existing, input);
     db.prepare(`
-      INSERT INTO household_ai_settings
-        (household_id, updated_by_user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(household_id) DO UPDATE SET
+      INSERT INTO system_ai_settings
+        (id, updated_by_user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
+      VALUES (1, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
         updated_by_user_id = excluded.updated_by_user_id,
         api_key_encrypted = excluded.api_key_encrypted,
         api_key_hint = excluded.api_key_hint,
         model = excluded.model,
         base_url = excluded.base_url,
         updated_at = excluded.updated_at
-    `).run(householdId, userId, encrypted, hint, model, baseUrl, now);
-    return getSettings(householdId);
+    `).run(userId, values.encrypted, values.hint, values.model, values.baseUrl, values.now);
+    return getSystemSettings();
   }
 
-  function clearSettings(householdId) {
-    db.prepare("DELETE FROM household_ai_settings WHERE household_id = ?").run(householdId);
+  function saveUserSettings(userId, input) {
+    const existing = db.prepare("SELECT * FROM user_ai_settings WHERE user_id = ?").get(userId);
+    const values = normalizedValues(existing, input);
+    db.prepare(`
+      INSERT INTO user_ai_settings
+        (user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        api_key_encrypted = excluded.api_key_encrypted,
+        api_key_hint = excluded.api_key_hint,
+        model = excluded.model,
+        base_url = excluded.base_url,
+        updated_at = excluded.updated_at
+    `).run(userId, values.encrypted, values.hint, values.model, values.baseUrl, values.now);
+    return getUserSettings(userId);
+  }
+
+  function clearSystemSettings() {
+    db.prepare("DELETE FROM system_ai_settings WHERE id = 1").run();
     return { ok: true };
   }
 
-  function resolveRuntime(householdId) {
-    const row = db.prepare("SELECT * FROM household_ai_settings WHERE household_id = ?").get(householdId);
+  function clearUserSettings(userId) {
+    db.prepare("DELETE FROM user_ai_settings WHERE user_id = ?").run(userId);
+    return { ok: true };
+  }
+
+  function runtimeFrom(row, mode) {
     if (!row) return null;
     try {
-      return { apiKey: decryptSecret(row.api_key_encrypted, secret), model: row.model, baseURL: row.base_url };
+      return { apiKey: decryptSecret(row.api_key_encrypted, secret), model: row.model, baseURL: row.base_url, mode };
     } catch {
       const error = new Error("无法解密模型 API Key，请在用户页面重新保存配置");
       error.statusCode = 503;
@@ -95,7 +124,33 @@ function createAiSettingsService(db, secret) {
     }
   }
 
-  return { getSettings, saveSettings, clearSettings, resolveRuntime };
+  function runtimeStatus(userId) {
+    const personalConfigured = Boolean(db.prepare("SELECT user_id FROM user_ai_settings WHERE user_id = ?").get(userId));
+    const systemConfigured = Boolean(db.prepare("SELECT id FROM system_ai_settings WHERE id = 1").get());
+    return {
+      configured: personalConfigured || systemConfigured,
+      mode: personalConfigured ? "personal" : systemConfigured ? "system" : "unconfigured",
+      personalConfigured,
+      systemConfigured
+    };
+  }
+
+  function resolveRuntime(userId) {
+    const personal = db.prepare("SELECT * FROM user_ai_settings WHERE user_id = ?").get(userId);
+    if (personal) return runtimeFrom(personal, "personal");
+    return runtimeFrom(db.prepare("SELECT * FROM system_ai_settings WHERE id = 1").get(), "system");
+  }
+
+  return {
+    clearSystemSettings,
+    clearUserSettings,
+    getSystemSettings,
+    getUserSettings,
+    resolveRuntime,
+    runtimeStatus,
+    saveSystemSettings,
+    saveUserSettings
+  };
 }
 
 module.exports = { DEFAULT_BASE_URL, createAiSettingsService, decryptSecret, encryptSecret, normalizeBaseUrl };

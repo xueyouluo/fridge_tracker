@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260712-6"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260714-3"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -73,7 +73,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260712-8/);
+  assert.match(html, /styles\.css\?v=20260714-4/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -87,7 +87,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260712-6/);
+  assert.match(html, /app\.js\?v=20260714-3/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
@@ -105,9 +105,41 @@ test("household UI supports invitations, member controls and owner-only device p
   assert.match(app, /\/api\/household\/invites\/accept/);
   assert.match(app, /permissions\.manageDevices/);
   assert.match(app, /data-remove-household-member/);
-  assert.match(html, />家庭 Agent<\/h2>/);
-  assert.match(app, /form\.classList\.toggle\("hidden", !canManage\)/);
-  assert.match(app, /家庭创建者已配置 Agent/);
+  assert.match(html, />系统 Agent<\/h2>/);
+  assert.match(html, />我的 Agent<\/h2>/);
+  assert.match(html, /id="systemAiSettingsCard"[\s\S]*class="[^"]*hidden/);
+  assert.match(html, /id="registeredUsersCard"[\s\S]*class="[^"]*hidden/);
+  assert.match(app, /systemCard\.classList\.toggle\("hidden", !state\.user\?\.isAdmin\)/);
+  assert.match(app, /registeredUsersCard"\)\.classList\.toggle\("hidden", !result\.canManageUsers\)/);
+  assert.match(app, /\/api\/admin\/agent\/settings/);
+  assert.match(app, /个人配置仅自己可用|个人 API Key/);
+});
+
+test("user settings align account cards and explain how to configure a personal DeepSeek API key", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  assert.match(html, /https:\/\/platform\.deepseek\.com\/api_keys/);
+  assert.match(html, /deepseek-v4-flash/);
+  assert.match(html, /https:\/\/api\.deepseek\.com/);
+  assert.match(app, /useDeepSeekPreset/);
+  assert.match(app, /form\.elements\.openaiModel\.value = "deepseek-v4-flash"/);
+  assert.match(css, /\.user-layout \{[^}]*align-items: stretch/);
+  assert.match(css, /\.user-layout\.is-admin/);
+  assert.match(css, /\.ai-provider-preset button \{ margin-left: auto; \}/);
+});
+
+test("Agent quota is visible to users and editable only from the administrator user list", () => {
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  assert.match(app, /Agent 输入额度/);
+  assert.match(app, /data-user-quota/);
+  assert.match(app, /agent-quota/);
+  assert.match(app, /state\.canManageUsers \? `<form class="quota-form"/);
+  assert.match(app, /剩余 \$\{result\.quota\.remaining\} 次/);
+  assert.match(css, /\.quota-form > span \{[\s\S]*height: var\(--control-height-sm\)/);
+  assert.match(css, /grid-template-areas: "limit limit" "usage save"/);
+  assert.match(css, /\.quota-form button \{ grid-area: save;[\s\S]*height: var\(--control-height-md\)/);
 });
 
 test("buttons use a consistent three-level control scale", () => {

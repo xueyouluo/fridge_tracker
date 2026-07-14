@@ -20,6 +20,7 @@ const { createFoodService } = require("./foods");
 const { createAccessTokenService } = require("./accessTokens");
 const { createAiSettingsService } = require("./aiSettings");
 const { createAgentService } = require("./agent");
+const { DEFAULT_AGENT_INPUT_QUOTA, createAgentQuotaService, grantHistoricalAgentQuota } = require("./agentQuota");
 const { createMcpHandler } = require("./mcp");
 const { createHouseholdService } = require("./households");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
@@ -63,14 +64,18 @@ const householdService = createHouseholdService({ db, hashValue: sha256 });
 householdService.ensureHouseholds();
 seedLocalDemo();
 householdService.ensureHouseholds();
+migrateSystemAiSettings();
 const foodService = createFoodService({ db, timezone: config.timezone, onChange: invalidateFrames });
 const accessTokenService = createAccessTokenService(db);
 const aiSettingsService = createAiSettingsService(db, config.credentialEncryptionKey || config.adminPassword);
+const agentQuotaService = createAgentQuotaService(db);
 const agentService = createAgentService({
   db,
   foodService,
   timezone: config.timezone,
-  resolveRuntime: (userId) => aiSettingsService.resolveRuntime(householdService.householdIdForUser(userId)),
+  resolveRuntime: (userId) => aiSettingsService.resolveRuntime(userId),
+  consumeInput: agentQuotaService.consumeInput,
+  getQuota: agentQuotaService.getQuota,
   resolveHouseholdId: householdService.householdIdForUser
 });
 const handleMcp = createMcpHandler({
@@ -103,8 +108,14 @@ function initializeDatabase() {
       display_name TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL DEFAULT 'member',
       password_hash TEXT NOT NULL,
+      agent_input_quota INTEGER NOT NULL DEFAULT ${DEFAULT_AGENT_INPUT_QUOTA} CHECK (agent_input_quota >= 0),
+      agent_input_used INTEGER NOT NULL DEFAULT 0 CHECK (agent_input_used >= 0),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS app_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY,
@@ -195,6 +206,23 @@ function initializeDatabase() {
       base_url TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS user_ai_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      api_key_encrypted TEXT NOT NULL,
+      api_key_hint TEXT NOT NULL,
+      model TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS system_ai_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      updated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      api_key_encrypted TEXT NOT NULL,
+      api_key_hint TEXT NOT NULL,
+      model TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS agent_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
@@ -223,9 +251,10 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS agent_messages_conversation_idx ON agent_messages(conversation_id, id);
   `);
   migrateUsersTable();
+  grantHistoricalAgentQuota(db);
   ensureLegacyUserHouseholds();
   migrateHouseholdScopeTables();
-  migrateAiSettingsTable();
+  migrateSystemAiSettings();
   migrateAgentMessagesTable();
   migrateAgentPendingActionsTable();
 }
@@ -246,6 +275,8 @@ function migrateUsersTable() {
   if (!columns.has("email")) db.exec("ALTER TABLE users ADD COLUMN email TEXT");
   if (!columns.has("display_name")) db.exec("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
   if (!columns.has("role")) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
+  if (!columns.has("agent_input_quota")) db.exec(`ALTER TABLE users ADD COLUMN agent_input_quota INTEGER NOT NULL DEFAULT ${DEFAULT_AGENT_INPUT_QUOTA}`);
+  if (!columns.has("agent_input_used")) db.exec("ALTER TABLE users ADD COLUMN agent_input_used INTEGER NOT NULL DEFAULT 0");
   if (!columns.has("updated_at")) db.exec("ALTER TABLE users ADD COLUMN updated_at TEXT");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email) WHERE email IS NOT NULL AND email != ''");
   db.prepare("UPDATE users SET display_name = login WHERE display_name = ''").run();
@@ -351,26 +382,20 @@ function migrateHouseholdScopeTables() {
   }
 }
 
-function migrateAiSettingsTable() {
-  const legacy = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'user_ai_settings'").get();
-  if (!legacy) return;
+function migrateSystemAiSettings() {
+  const configured = db.prepare("SELECT id FROM system_ai_settings WHERE id = 1").get();
+  if (configured) return;
   db.exec(`
-    INSERT OR IGNORE INTO household_ai_settings
-      (household_id, updated_by_user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
-    SELECT household_members.household_id, user_ai_settings.user_id,
-      user_ai_settings.api_key_encrypted, user_ai_settings.api_key_hint,
-      user_ai_settings.model, user_ai_settings.base_url, user_ai_settings.updated_at
-    FROM user_ai_settings
-    JOIN household_members ON household_members.user_id = user_ai_settings.user_id
-    WHERE user_ai_settings.user_id = (
-      SELECT candidate.user_id
-      FROM user_ai_settings AS candidate
-      JOIN household_members AS candidate_member ON candidate_member.user_id = candidate.user_id
-      WHERE candidate_member.household_id = household_members.household_id
-      ORDER BY CASE candidate_member.role WHEN 'owner' THEN 0 ELSE 1 END, candidate.updated_at DESC
-      LIMIT 1
-    );
-    DROP TABLE user_ai_settings;
+    INSERT OR IGNORE INTO system_ai_settings
+      (id, updated_by_user_id, api_key_encrypted, api_key_hint, model, base_url, updated_at)
+    SELECT 1, household_ai_settings.updated_by_user_id,
+      household_ai_settings.api_key_encrypted, household_ai_settings.api_key_hint,
+      household_ai_settings.model, household_ai_settings.base_url, household_ai_settings.updated_at
+    FROM household_ai_settings
+    JOIN users ON users.id = household_ai_settings.updated_by_user_id
+    WHERE users.role = 'admin'
+    ORDER BY household_ai_settings.updated_at DESC
+    LIMIT 1;
   `);
 }
 
@@ -382,10 +407,11 @@ function seedLocalDemo() {
   if (!user) {
     const created = db
       .prepare(`
-        INSERT INTO users (login, email, display_name, role, password_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users
+          (login, email, display_name, role, password_hash, agent_input_quota, agent_input_used, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
       `)
-      .run(config.adminLogin, adminEmail, adminDisplayName, "admin", hashSecret(config.adminPassword), now, now);
+      .run(config.adminLogin, adminEmail, adminDisplayName, "admin", hashSecret(config.adminPassword), DEFAULT_AGENT_INPUT_QUOTA, now, now);
     user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(created.lastInsertRowid));
   } else if (!verifySecret(config.adminPassword, user.password_hash)) {
     db.prepare("UPDATE users SET password_hash = ?, display_name = ?, role = 'admin', updated_at = ? WHERE id = ?")
@@ -493,7 +519,8 @@ function currentUser(req) {
   const token = parseCookies(req.headers.cookie).fridge_session;
   if (!token) return null;
   return db.prepare(`
-    SELECT users.id, users.login, users.email, users.display_name, users.role, users.created_at
+    SELECT users.id, users.login, users.email, users.display_name, users.role,
+      users.agent_input_quota, users.agent_input_used, users.created_at
     FROM sessions JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
   `).get(sha256(token), new Date().toISOString()) || null;
@@ -542,6 +569,8 @@ function userRowsFor(current) {
     users.email,
     users.display_name,
     users.role,
+    users.agent_input_quota,
+    users.agent_input_used,
     users.created_at,
     users.updated_at,
     (SELECT COUNT(*) FROM food_items WHERE household_id =
@@ -715,7 +744,7 @@ async function routeApi(req, res, url) {
       timezone: config.timezone,
       frameBytes: FRAME_BYTES,
       panelProfiles,
-      agentMode: "household-settings-personal-conversations"
+      agentMode: "personal-settings-system-fallback-quota-conversations"
     });
     return true;
   }
@@ -744,9 +773,10 @@ async function routeApi(req, res, url) {
     }
     const now = new Date().toISOString();
     const created = db.prepare(`
-      INSERT INTO users (login, email, display_name, role, password_hash, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(email, email, displayName, "member", hashSecret(password), now, now);
+      INSERT INTO users
+        (login, email, display_name, role, password_hash, agent_input_quota, agent_input_used, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(email, email, displayName, "member", hashSecret(password), DEFAULT_AGENT_INPUT_QUOTA, now, now);
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(created.lastInsertRowid));
     householdService.createPersonalHousehold(user.id);
     const session = createSession(user.id);
@@ -841,6 +871,19 @@ async function routeApi(req, res, url) {
     return true;
   }
 
+  const userQuotaMatch = url.pathname.match(/^\/api\/users\/(\d+)\/agent-quota$/);
+  if (userQuotaMatch && req.method === "PATCH") {
+    if (!isAdmin(user)) {
+      const error = new Error("admin access required");
+      error.statusCode = 403;
+      error.code = "admin_required";
+      throw error;
+    }
+    const body = await readJson(req);
+    sendJson(res, 200, { quota: agentQuotaService.setQuota(Number(userQuotaMatch[1]), body.limit) });
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/household") {
     sendJson(res, 200, householdService.publicHousehold(user.id));
     return true;
@@ -917,28 +960,56 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/agent/conversations") {
-    sendJson(res, 200, { configured: agentService.isConfigured(user.id), conversations: agentService.listConversations(user.id) });
+    const runtime = aiSettingsService.runtimeStatus(user.id);
+    sendJson(res, 200, {
+      configured: runtime.configured,
+      mode: runtime.mode,
+      quota: agentQuotaService.getQuota(user.id),
+      conversations: agentService.listConversations(user.id)
+    });
     return true;
   }
 
   if (req.method === "GET" && url.pathname === "/api/agent/settings") {
-    const membership = householdService.membershipFor(user.id);
-    const settings = aiSettingsService.getSettings(membership.householdId);
-    sendJson(res, 200, membership.role === "owner"
-      ? { ...settings, canManage: true, scope: "household" }
-      : { configured: settings.configured, canManage: false, scope: "household" });
+    const runtime = aiSettingsService.runtimeStatus(user.id);
+    sendJson(res, 200, {
+      ...aiSettingsService.getUserSettings(user.id),
+      scope: "personal",
+      activeMode: runtime.mode,
+      systemConfigured: runtime.systemConfigured
+    });
     return true;
   }
 
   if (req.method === "PUT" && url.pathname === "/api/agent/settings") {
-    const membership = householdService.requireOwner(user.id);
-    sendJson(res, 200, { ...aiSettingsService.saveSettings(membership.householdId, user.id, await readJson(req)), canManage: true, scope: "household" });
+    sendJson(res, 200, { ...aiSettingsService.saveUserSettings(user.id, await readJson(req)), scope: "personal" });
     return true;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/agent/settings") {
-    const membership = householdService.requireOwner(user.id);
-    sendJson(res, 200, aiSettingsService.clearSettings(membership.householdId));
+    sendJson(res, 200, aiSettingsService.clearUserSettings(user.id));
+    return true;
+  }
+
+  if (url.pathname === "/api/admin/agent/settings" && !isAdmin(user)) {
+    const error = new Error("admin access required");
+    error.statusCode = 403;
+    error.code = "admin_required";
+    throw error;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/agent/settings") {
+    sendJson(res, 200, { ...aiSettingsService.getSystemSettings(), canManage: true, scope: "system" });
+    return true;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/admin/agent/settings") {
+    sendJson(res, 200, { ...aiSettingsService.saveSystemSettings(user.id, await readJson(req)), canManage: true, scope: "system" });
+    return true;
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/api/admin/agent/settings") {
+    sendJson(res, 200, aiSettingsService.clearSystemSettings());
     return true;
   }
 

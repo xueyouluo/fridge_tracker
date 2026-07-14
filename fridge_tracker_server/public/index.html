@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>鲜知贴</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=20260712-8">
+  <link rel="stylesheet" href="/styles.css?v=20260714-4">
 </head>
 <body>
   <header class="topbar">
@@ -192,9 +192,9 @@
       <section class="view" data-view-panel="users" aria-label="用户管理">
         <div class="page-title">
           <div><p class="eyebrow">用户管理</p><h1>账号与成员</h1></div>
-          <span id="userCount" class="pill"></span>
+          <span id="userCount" class="pill hidden"></span>
         </div>
-        <div class="user-layout">
+        <div id="userLayout" class="user-layout">
           <section class="panel account-card">
             <div class="section-head"><h2>当前账号</h2><span id="accountRole" class="role-pill"></span></div>
             <div id="accountPanel" class="account-summary"></div>
@@ -214,9 +214,40 @@
               <button id="copyHouseholdInvite" class="quiet" type="button">复制邀请链接</button>
             </div>
           </section>
-          <section class="panel ai-settings-card">
-            <div class="section-head"><h2>家庭 Agent</h2><span id="aiSettingsState" class="muted">未配置</span></div>
-            <p id="aiSettingsHint" class="muted">由家庭创建者配置，API Key 会加密保存且不会再次回显。</p>
+          <section id="systemAiSettingsCard" class="panel ai-settings-card system-ai-settings-card hidden">
+            <div class="section-head"><h2>系统 Agent</h2><span id="systemAiSettingsState" class="muted">未配置</span></div>
+            <p id="systemAiSettingsHint" class="muted">由管理员统一配置，供未设置个人 API Key 的用户使用。</p>
+            <form id="systemAiSettingsForm" class="ai-settings-form" autocomplete="off">
+              <label>API Key
+                <input name="openaiApiKey" type="password" autocomplete="new-password" placeholder="首次配置必填；留空则保留原 Key">
+              </label>
+              <label>模型
+                <input name="openaiModel" maxlength="120" placeholder="填写供应商提供的模型 ID" required>
+              </label>
+              <label class="ai-base-url">Base URL
+                <input name="openaiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
+              </label>
+              <div class="ai-settings-actions">
+                <button id="clearSystemAiSettings" class="quiet" type="button">清除系统配置</button>
+                <button class="primary" type="submit">保存系统配置</button>
+              </div>
+            </form>
+          </section>
+          <section class="panel ai-settings-card personal-ai-settings-card">
+            <div class="section-head"><h2>我的 Agent</h2><span id="aiSettingsState" class="muted">使用系统配置</span></div>
+            <p id="aiSettingsHint" class="muted">可选填写自己的 API Key；个人配置仅自己可用，且不消耗系统输入额度。</p>
+            <div class="ai-provider-guide">
+              <div>
+                <strong>第一次配置？可以使用 DeepSeek</strong>
+                <span>前往开放平台创建 API Key，再把 Key 粘贴到下方。</span>
+              </div>
+              <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">创建 DeepSeek API Key ↗</a>
+              <div class="ai-provider-preset">
+                <code>模型：deepseek-v4-flash</code>
+                <code>Base URL：https://api.deepseek.com</code>
+                <button id="useDeepSeekPreset" class="quiet" type="button">填入 DeepSeek 参数</button>
+              </div>
+            </div>
             <form id="aiSettingsForm" class="ai-settings-form" autocomplete="off">
               <label>API Key
                 <input name="openaiApiKey" type="password" autocomplete="new-password" placeholder="首次配置必填；留空则保留原 Key">
@@ -228,8 +259,8 @@
                 <input name="openaiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
               </label>
               <div class="ai-settings-actions">
-                <button id="clearAiSettings" class="quiet" type="button">清除配置</button>
-                <button class="primary" type="submit">保存模型配置</button>
+                <button id="clearAiSettings" class="quiet" type="button">改用系统配置</button>
+                <button class="primary" type="submit">保存个人配置</button>
               </div>
             </form>
           </section>
@@ -257,7 +288,7 @@ url = "https://fridge.followllm.online/mcp"
 bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
             </details>
           </section>
-          <section class="panel collection">
+          <section id="registeredUsersCard" class="panel collection hidden">
             <div class="section-head"><h2>已注册用户</h2><span id="userScope" class="muted"></span></div>
             <div id="users" class="user-list"></div>
           </section>
@@ -419,6 +450,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260712-6"></script>
+  <script src="/app.js?v=20260714-3"></script>
 </body>
 </html>

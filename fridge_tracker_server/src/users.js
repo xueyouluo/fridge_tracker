@@ -46,6 +46,11 @@ function publicUser(row) {
   };
   if (row.food_count !== undefined) result.foodCount = Number(row.food_count);
   if (row.device_count !== undefined) result.deviceCount = Number(row.device_count);
+  if (row.agent_input_quota !== undefined) {
+    const limit = Number(row.agent_input_quota);
+    const used = Number(row.agent_input_used || 0);
+    result.agentQuota = { limit, used, remaining: Math.max(0, limit - used) };
+  }
   return result;
 }
 

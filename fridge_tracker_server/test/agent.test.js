@@ -22,19 +22,19 @@ test("agent food tools resolve a member account to its shared household", () => 
   assert.equal(foods.listFoodItems(1)[0].name, "共享牛奶");
 });
 
-test("a household member uses the owner-configured Agent runtime", () => {
+test("all users use the administrator-configured system Agent runtime", () => {
   const db = createTestDatabase();
   db.prepare("DELETE FROM household_members WHERE user_id = 2").run();
   db.prepare("DELETE FROM households WHERE id = 2").run();
   db.prepare("INSERT INTO household_members VALUES (?, ?, ?, ?)").run(1, 2, "member", "2026-01-02");
-  const settings = createAiSettingsService(db, "shared-household-secret");
-  settings.saveSettings(1, 1, { openaiApiKey: "shared-key", openaiModel: "shared-model", openaiBaseUrl: "https://api.openai.com/v1" });
+  const settings = createAiSettingsService(db, "shared-system-secret");
+  settings.saveSystemSettings(1, { openaiApiKey: "shared-key", openaiModel: "shared-model", openaiBaseUrl: "https://api.openai.com/v1" });
   const householdIdFor = (userId) => db.prepare("SELECT household_id FROM household_members WHERE user_id = ?").get(userId).household_id;
   const agent = createAgentService({
     db,
     foodService: createFoodService({ db }),
     resolveHouseholdId: householdIdFor,
-    resolveRuntime: (userId) => settings.resolveRuntime(householdIdFor(userId))
+    resolveRuntime: (userId) => settings.resolveRuntime(userId)
   });
   assert.equal(agent.isConfigured(2), true);
 });

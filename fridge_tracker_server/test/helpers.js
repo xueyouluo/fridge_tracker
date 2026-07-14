@@ -6,7 +6,11 @@ function createTestDatabase() {
   const db = new DatabaseSync(":memory:");
   db.exec(`
     PRAGMA foreign_keys = ON;
-    CREATE TABLE users (id INTEGER PRIMARY KEY, login TEXT, email TEXT, display_name TEXT, role TEXT);
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY, login TEXT, email TEXT, display_name TEXT, role TEXT,
+      agent_input_quota INTEGER NOT NULL DEFAULT 100, agent_input_used INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE app_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
     CREATE TABLE households (
       id INTEGER PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
@@ -50,6 +54,16 @@ function createTestDatabase() {
       api_key_encrypted TEXT NOT NULL, api_key_hint TEXT NOT NULL,
       model TEXT NOT NULL, base_url TEXT NOT NULL, updated_at TEXT NOT NULL
     );
+    CREATE TABLE system_ai_settings (
+      id INTEGER PRIMARY KEY, updated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      api_key_encrypted TEXT NOT NULL, api_key_hint TEXT NOT NULL,
+      model TEXT NOT NULL, base_url TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE user_ai_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      api_key_encrypted TEXT NOT NULL, api_key_hint TEXT NOT NULL,
+      model TEXT NOT NULL, base_url TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
     CREATE TABLE agent_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
       role TEXT NOT NULL, content TEXT NOT NULL, metadata_json TEXT,
@@ -62,8 +76,8 @@ function createTestDatabase() {
       resolved_at TEXT, resolution TEXT, resume_json TEXT, created_at TEXT NOT NULL
     );
   `);
-  db.prepare("INSERT INTO users VALUES (?, ?, ?, ?, ?)").run(1, "one", "one@example.com", "One", "member");
-  db.prepare("INSERT INTO users VALUES (?, ?, ?, ?, ?)").run(2, "two", "two@example.com", "Two", "member");
+  db.prepare("INSERT INTO users (id, login, email, display_name, role) VALUES (?, ?, ?, ?, ?)").run(1, "one", "one@example.com", "One", "member");
+  db.prepare("INSERT INTO users (id, login, email, display_name, role) VALUES (?, ?, ?, ?, ?)").run(2, "two", "two@example.com", "Two", "member");
   db.prepare("INSERT INTO households VALUES (?, ?, ?, ?)").run(1, "One的家庭", "2026-01-01", "2026-01-01");
   db.prepare("INSERT INTO households VALUES (?, ?, ?, ?)").run(2, "Two的家庭", "2026-01-01", "2026-01-01");
   db.prepare("INSERT INTO household_members VALUES (?, ?, ?, ?)").run(1, 1, "owner", "2026-01-01");
