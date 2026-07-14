@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260714-5"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260714-6"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -87,13 +87,14 @@ test("overview hides remaining quota and offers direct-send example prompts", ()
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.equal((html.match(/data-agent-example=/g) || []).length, 5);
-  assert.match(html, />添加牛奶<\/button>/);
-  assert.match(html, />查询临期<\/button>/);
-  assert.match(html, />修改数量<\/button>/);
-  assert.match(html, />删除记录<\/button>/);
-  assert.match(html, />今天吃什么<\/button>/);
+  assert.equal((html.match(/data-agent-example=/g) || []).length, 2);
+  assert.match(html, />冰箱里有哪些三天内到期的食材？<\/button>/);
+  assert.match(html, />根据冰箱现有食材，今天可以做什么菜？<\/button>/);
+  assert.doesNotMatch(html, /data-agent-example="帮我添加一盒牛奶/);
+  assert.doesNotMatch(html, /data-agent-example="把牛奶的数量改成 2 盒/);
+  assert.doesNotMatch(html, /data-agent-example="删除已经吃完的牛奶/);
   assert.match(css, /\.agent-example-list \{ display: flex; flex-wrap: wrap;/);
+  assert.match(css, /max-width: 100%; white-space: normal; text-align: left;/);
   assert.match(app, /example\.dataset\.agentExample/);
   assert.match(app, /setOverviewExamplesAvailability\(false\)/);
   assert.doesNotMatch(app, /系统额度剩余/);
@@ -117,7 +118,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260714-5/);
+  assert.match(html, /styles\.css\?v=20260714-6/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -131,7 +132,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260714-5/);
+  assert.match(html, /app\.js\?v=20260714-6/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
