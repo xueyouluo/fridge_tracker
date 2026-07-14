@@ -736,16 +736,65 @@ body.modal-open { overflow: hidden; }
 .agent-markdown th, .agent-markdown td { padding: 7px 9px; border: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .agent-markdown th { background: #e7ece5; }
 .agent-compose {
-  display: flex; align-items: flex-end; gap: 8px; margin: 14px 16px 16px; padding: 7px 8px 7px 16px;
+  position: relative; display: flex; align-items: flex-end; gap: 8px; margin: 14px 16px 16px; padding: 7px 8px 7px 14px;
   border: 1px solid var(--line); border-radius: 27px; background: #fbfcfa; box-shadow: 0 5px 18px rgba(19, 32, 29, .07);
 }
 .agent-compose:focus-within { border-color: #7aae94; box-shadow: 0 0 0 3px rgba(34, 120, 79, .12); }
+.agent-input-surface { flex: 1; min-width: 0; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.agent-compose.is-long-press-pending { border-color: #78a98d; background: #f2f8f3; }
 .agent-compose textarea {
   flex: 1; width: 100%; height: 40px; min-height: 40px; max-height: 128px; padding: 9px 0;
   resize: none; overflow-y: auto; border: 0; outline: 0; color: var(--ink); background: transparent;
-  font: inherit; line-height: 22px;
+  font: inherit; line-height: 22px; user-select: text; -webkit-user-select: text;
 }
 .agent-compose textarea::placeholder { color: #8b938e; }
+.agent-voice-pad {
+  display: none; align-items: center; justify-content: center; gap: 8px; flex: 1; min-width: 0; height: 40px; padding: 0 12px;
+  border: 0; border-radius: 20px; color: var(--ink); background: transparent; font: inherit; font-weight: 700;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  transition: color .16s ease, background-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+.agent-compose[data-input-mode="voice"] .agent-input-surface,
+.agent-compose[data-input-mode="voice"] .agent-send { display: none; }
+.agent-compose[data-input-mode="voice"] .agent-voice-pad { display: flex; }
+.agent-voice-pad:hover:not(:disabled) { background: var(--green-soft); }
+.agent-voice-pad:focus-visible, .agent-mode-toggle:focus-visible { outline: 3px solid rgba(25, 104, 73, .22); outline-offset: 2px; }
+.agent-voice-pad:disabled { cursor: default; color: #8b938e; transform: none; }
+.agent-voice-pad[aria-pressed="true"] {
+  color: #fff; background: var(--green); box-shadow: 0 0 0 5px rgba(25, 104, 73, .13);
+  animation: voice-listening 1.4s ease-in-out infinite;
+}
+.agent-voice-pad.is-processing { color: #8a5a00; background: var(--yellow-soft); }
+.agent-voice-pad svg {
+  width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.agent-mode-toggle {
+  display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 50%; color: var(--green); background: var(--green-soft);
+}
+.agent-mode-toggle:hover:not(:disabled) { background: #d9ebdf; transform: translateY(-1px); }
+.agent-mode-toggle:disabled { cursor: default; color: #8b938e; background: #e8ebe8; transform: none; }
+.agent-mode-toggle svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.agent-mode-toggle .mode-icon-text { display: none; }
+.agent-compose[data-input-mode="voice"] .agent-mode-toggle .mode-icon-voice { display: none; }
+.agent-compose[data-input-mode="voice"] .agent-mode-toggle .mode-icon-text { display: block; }
+.agent-voice-status { color: var(--green); font-size: 12px; line-height: 1.4; }
+.agent-voice-status:empty { display: none; }
+.agent-voice-status.error { color: var(--red); }
+.agent-compose .agent-voice-status {
+  position: absolute; right: 54px; bottom: calc(100% + 8px); z-index: 2; max-width: min(340px, calc(100vw - 48px));
+  padding: 7px 10px; border: 1px solid rgba(25, 104, 73, .16); border-radius: 10px;
+  background: rgba(255, 255, 255, .97); box-shadow: 0 8px 24px rgba(19, 32, 29, .12);
+}
+.agent-compose .agent-voice-status.error { border-color: rgba(200, 61, 54, .18); }
+@keyframes voice-listening {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(25, 104, 73, .11); }
+  50% { box-shadow: 0 0 0 7px rgba(25, 104, 73, .18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-voice-pad[aria-pressed="true"], .voice-recording-wave span { animation: none; }
+}
 .agent-send {
   display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; padding: 0;
   border: 0; border-radius: 50%; color: #fff; background: var(--green); box-shadow: 0 4px 10px rgba(27, 111, 75, .2);
@@ -754,6 +803,35 @@ body.modal-open { overflow: hidden; }
 .agent-send:disabled { color: #8b938e; background: #d8ddd9; box-shadow: none; }
 .agent-send svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .agent-compose.agent-disabled { opacity: .6; }
+.voice-recording-overlay {
+  position: fixed; inset: 0; z-index: 1500; display: grid; align-items: end; pointer-events: none;
+  color: #fff; background: rgba(4, 12, 18, .66); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+.voice-recording-overlay.hidden { display: none; }
+.voice-recording-panel {
+  display: grid; justify-items: center; align-content: end; gap: 18px; width: 100%; min-height: min(46svh, 430px);
+  padding: 56px max(24px, env(safe-area-inset-right)) calc(46px + env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: radial-gradient(ellipse 90% 105% at 50% 105%, rgba(70, 202, 255, .98) 0%, rgba(28, 137, 255, .93) 36%, rgba(14, 80, 170, .62) 64%, rgba(4, 12, 18, 0) 82%);
+  transition: background .18s ease;
+}
+.voice-recording-state { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.voice-recording-state span { width: 9px; height: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 6px rgba(255,255,255,.14); }
+.voice-recording-state strong { font-size: 16px; letter-spacing: .02em; }
+.voice-recording-panel p { margin: 0; color: rgba(255,255,255,.92); font-size: 17px; }
+.voice-recording-wave { display: flex; align-items: center; justify-content: center; gap: 3px; width: min(520px, 78vw); height: 46px; }
+.voice-recording-wave span { width: 4px; min-height: 5px; border-radius: 99px; background: rgba(255,255,255,.94); animation: voice-wave 760ms ease-in-out infinite alternate; }
+.voice-recording-wave span:nth-child(3n) { animation-delay: -180ms; }
+.voice-recording-wave span:nth-child(4n) { animation-delay: -360ms; }
+.voice-recording-wave span:nth-child(5n) { animation-delay: -520ms; }
+.voice-recording-overlay.is-cancelling .voice-recording-panel {
+  background: radial-gradient(ellipse 90% 105% at 50% 105%, rgba(255, 112, 105, .98) 0%, rgba(211, 58, 62, .92) 38%, rgba(111, 25, 42, .58) 66%, rgba(4, 12, 18, 0) 82%);
+}
+.voice-recording-overlay.is-cancelling .voice-recording-state span { background: #ffe0dd; }
+body.voice-recording-open { overflow: hidden; }
+@keyframes voice-wave {
+  from { height: 6px; opacity: .6; }
+  to { height: var(--voice-bar-height, 34px); opacity: 1; }
+}
 .pending-action { display: grid; gap: 7px; margin-top: 8px; padding: 13px; border: 1px solid #efd182; border-radius: 13px; background: var(--yellow-soft); }
 .pending-action[aria-busy="true"] { opacity: .78; }
 .pending-action[aria-busy="true"] button { cursor: wait; }
@@ -810,12 +888,7 @@ body.modal-open { overflow: hidden; }
 .welcome, .welcome-agent, .overview-agent-result { min-width: 0; }
 .welcome-agent { display: grid; gap: 9px; margin-top: 24px; }
 .welcome-agent > strong { font-size: 14px; }
-.welcome-agent-form { display: grid; gap: 9px; }
-.welcome-agent-form textarea {
-  min-height: 66px; padding: 12px 14px; resize: vertical; border: 1px solid var(--line);
-  border-radius: 13px; color: var(--ink); background: rgba(255,255,255,.9); font: inherit;
-}
-.welcome-agent-form .primary { width: 100%; }
+.welcome-agent-form.agent-compose { margin: 0; background: rgba(255,255,255,.9); }
 .welcome-agent-form.agent-disabled { opacity: .58; }
 .overview-agent-result .agent-message { width: 100%; max-width: 100%; }
 .overview-agent-status:empty { display: none; }

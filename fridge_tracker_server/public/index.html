@@ -78,9 +78,22 @@
             <p id="todayText" class="muted"></p>
             <div class="welcome-agent">
               <strong>直接告诉助手你想做什么</strong>
-              <form id="overviewAgentForm" class="welcome-agent-form">
-                <textarea name="content" maxlength="4000" rows="2" placeholder="例如：添加一盒牛奶，7 月 20 日到期" required></textarea>
-                <button class="primary" type="submit">交给助手</button>
+              <form id="overviewAgentForm" class="welcome-agent-form agent-compose agent-compose-overview" data-input-mode="text">
+                <div class="agent-input-surface" data-voice-text-surface>
+                  <textarea name="content" maxlength="4000" rows="1" placeholder="发消息或按住说话…" required></textarea>
+                </div>
+                <button class="agent-voice-pad" type="button" data-voice-input aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-4 0h8"/></svg>
+                  <span>按住说话</span>
+                </button>
+                <span class="agent-voice-status" data-voice-status role="status"></span>
+                <button class="agent-send" type="submit" aria-label="发送消息">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+                </button>
+                <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到纯语音输入">
+                  <svg class="mode-icon-voice" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4m4-7v10m4-13v16m4-12v8m4-5v2"/></svg>
+                  <svg class="mode-icon-text" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                </button>
               </form>
               <div id="overviewAgentResult" class="overview-agent-result hidden" aria-live="polite"></div>
               <span id="overviewAgentStatus" class="overview-agent-status muted"></span>
@@ -316,16 +329,34 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
             <div id="agentMessages" class="agent-messages" aria-live="polite">
               <div class="agent-empty"><strong>直接说出你想做的事</strong><span>例如：“帮我添加一盒牛奶，7 月 20 日到期。”</span></div>
             </div>
-            <form id="agentForm" class="agent-compose">
-              <textarea name="content" maxlength="4000" rows="1" placeholder="给鲜知贴发送消息" required></textarea>
+            <form id="agentForm" class="agent-compose" data-input-mode="text">
+              <div class="agent-input-surface" data-voice-text-surface>
+                <textarea name="content" maxlength="4000" rows="1" placeholder="发消息或按住说话…" required></textarea>
+              </div>
+              <button class="agent-voice-pad" type="button" data-voice-input aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-4 0h8"/></svg>
+                <span>按住说话</span>
+              </button>
+              <span class="agent-voice-status" data-voice-status role="status"></span>
               <button class="agent-send" type="submit" aria-label="发送消息">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+              </button>
+              <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到纯语音输入">
+                <svg class="mode-icon-voice" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4m4-7v10m4-13v16m4-12v8m4-5v2"/></svg>
+                <svg class="mode-icon-text" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
               </button>
             </form>
           </section>
         </div>
       </section>
     </section>
+    <div id="voiceRecordingOverlay" class="voice-recording-overlay hidden" aria-hidden="true">
+      <div class="voice-recording-panel">
+        <div class="voice-recording-state"><span></span><strong id="voiceRecordingTitle">正在收音…</strong></div>
+        <p id="voiceRecordingHint">松手发送，上移取消</p>
+        <div id="voiceRecordingWave" class="voice-recording-wave" aria-hidden="true"></div>
+      </div>
+    </div>
     <div id="foodEditorOverlay" class="food-editor-overlay hidden" aria-hidden="true">
       <section class="food-editor" role="dialog" aria-modal="true" aria-labelledby="foodEditorTitle" aria-describedby="foodEditorHint">
         <header class="food-editor-header">
@@ -450,6 +481,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260714-3"></script>
+  <script src="/app.js?v=20260714-4"></script>
 </body>
 </html>

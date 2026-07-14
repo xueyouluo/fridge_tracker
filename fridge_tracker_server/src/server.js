@@ -24,6 +24,7 @@ const { DEFAULT_AGENT_INPUT_QUOTA, createAgentQuotaService, grantHistoricalAgent
 const { createMcpHandler } = require("./mcp");
 const { createHouseholdService } = require("./households");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
+const { MAX_TRANSCRIPTION_REQUEST_CHARS, createTranscriptionService, resolveSystemAsrConfig } = require("./transcription");
 const {
   displayNameFromEmail,
   isAdmin,
@@ -50,7 +51,10 @@ const DEFAULT_CONFIG = {
   adminEmail: "",
   adminPassword: "fridge-demo",
   demoDeviceToken: "local-fridge-device-token",
-  credentialEncryptionKey: ""
+  credentialEncryptionKey: "",
+  asrApiKey: "",
+  asrModel: "fun-asr-flash-2026-06-15",
+  asrBaseUrl: ""
 };
 
 const config = loadConfig();
@@ -69,6 +73,7 @@ const foodService = createFoodService({ db, timezone: config.timezone, onChange:
 const accessTokenService = createAccessTokenService(db);
 const aiSettingsService = createAiSettingsService(db, config.credentialEncryptionKey || config.adminPassword);
 const agentQuotaService = createAgentQuotaService(db);
+const systemAsrRuntime = resolveSystemAsrConfig(config);
 const agentService = createAgentService({
   db,
   foodService,
@@ -78,6 +83,7 @@ const agentService = createAgentService({
   getQuota: agentQuotaService.getQuota,
   resolveHouseholdId: householdService.householdIdForUser
 });
+const transcriptionService = createTranscriptionService({ resolveRuntime: () => systemAsrRuntime });
 const handleMcp = createMcpHandler({
   foodService,
   authenticate: accessTokenService.authenticate,
@@ -618,15 +624,23 @@ async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_OR
   return result;
 }
 
-function readJson(req) {
+function readJson(req, maxChars = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let failed = false;
     req.setEncoding("utf8");
     req.on("data", (chunk) => {
+      if (failed) return;
       body += chunk;
-      if (body.length > 64 * 1024) reject(new Error("request body too large"));
+      if (body.length > maxChars) {
+        failed = true;
+        const error = new Error("request body too large");
+        error.statusCode = 413;
+        reject(error);
+      }
     });
     req.on("end", () => {
+      if (failed) return;
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch {
@@ -1010,6 +1024,18 @@ async function routeApi(req, res, url) {
 
   if (req.method === "DELETE" && url.pathname === "/api/admin/agent/settings") {
     sendJson(res, 200, aiSettingsService.clearSystemSettings());
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agent/voice-settings") {
+    sendJson(res, 200, { configured: Boolean(systemAsrRuntime), canManage: false, scope: "system" });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/agent/transcriptions") {
+    const membership = householdService.membershipFor(user.id);
+    const input = await readJson(req, MAX_TRANSCRIPTION_REQUEST_CHARS);
+    sendJson(res, 200, await transcriptionService.transcribe(membership.householdId, input));
     return true;
   }
 

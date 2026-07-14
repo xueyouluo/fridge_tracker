@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260714-3"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260714-4"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -37,22 +37,49 @@ test("agent textareas submit on Enter while preserving Shift+Enter and IME compo
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(app, /event\.key !== "Enter" \|\| event\.shiftKey \|\| event\.isComposing \|\| event\.keyCode === 229/);
   assert.match(app, /event\.preventDefault\(\)/);
+  assert.match(app, /!textarea\.disabled && !submitButton\.disabled/);
   assert.match(app, /form\.requestSubmit\(\)/);
   assert.match(app, /enableEnterToSubmit\(\$\("#agentForm"\)\)/);
   assert.match(app, /enableEnterToSubmit\(\$\("#overviewAgentForm"\)\)/);
 });
 
-test("conversation composer is compact, auto-growing and uses an accessible send icon", () => {
+test("agent composers support text and pure-voice modes with upward cancel", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /<textarea name="content" maxlength="4000" rows="1" placeholder="给鲜知贴发送消息"/);
+  assert.equal((html.match(/placeholder="发消息或按住说话…"/g) || []).length, 2);
   assert.match(html, /class="agent-send" type="submit" aria-label="发送消息"/);
-  assert.doesNotMatch(html, /id="agentForm"[\s\S]{0,400}麦克风/);
+  assert.equal((html.match(/data-voice-input/g) || []).length, 2);
+  assert.equal((html.match(/data-voice-text-surface/g) || []).length, 2);
+  assert.equal((html.match(/data-input-mode-toggle/g) || []).length, 2);
+  assert.equal((html.match(/data-input-mode="text"/g) || []).length, 2);
+  assert.match(html, /aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled/);
+  assert.match(html, /id="voiceRecordingOverlay"[\s\S]*松手发送，上移取消[\s\S]*id="voiceRecordingWave"/);
   assert.match(css, /\.agent-compose \{[\s\S]*border-radius: 27px/);
   assert.match(css, /\.agent-send \{[\s\S]*border-radius: 50%/);
+  assert.match(css, /\.agent-voice-pad\[aria-pressed="true"\]/);
+  assert.match(css, /\.agent-compose\[data-input-mode="voice"\] \.agent-voice-pad \{ display: flex; \}/);
+  assert.match(css, /\.voice-recording-overlay\.is-cancelling \.voice-recording-panel/);
+  assert.match(css, /touch-action: none; user-select: none/);
   assert.match(app, /Math\.min\(textarea\.scrollHeight, 128\)/);
   assert.match(app, /enableAgentTextareaAutoGrow\(\$\("#agentForm"\)\)/);
+  assert.match(app, /const VOICE_LONG_PRESS_MS = 280/);
+  assert.match(app, /const VOICE_CANCEL_DISTANCE_PX = 72/);
+  assert.match(app, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(app, /new MediaRecorder\(stream/);
+  assert.match(app, /"pointerdown"/);
+  assert.match(app, /"pointermove"/);
+  assert.match(app, /"pointerup"/);
+  assert.match(app, /pointerPress\.startY - event\.clientY >= VOICE_CANCEL_DISTANCE_PX/);
+  assert.match(app, /setVoiceRecordingCancelState\(controller, cancelling\)/);
+  assert.match(app, /form\.dataset\.inputMode === "voice" \? "text" : "voice"/);
+  assert.match(app, /正在录音，松开发送/);
+  assert.match(app, /\/api\/agent\/transcriptions/);
+  assert.match(app, /textarea\.dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\)/);
+  assert.match(app, /识别完成，正在发送/);
+  assert.doesNotMatch(app, /webkitSpeechRecognition/);
+  assert.match(app, /setupVoiceInput\(\$\("#agentForm"\)\)/);
+  assert.match(app, /setupVoiceInput\(\$\("#overviewAgentForm"\)\)/);
 });
 
 test("mobile agent view keeps chat full-height and collapses the conversation list", () => {
@@ -87,7 +114,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260714-3/);
+  assert.match(html, /app\.js\?v=20260714-4/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
@@ -113,6 +140,8 @@ test("household UI supports invitations, member controls and owner-only device p
   assert.match(app, /registeredUsersCard"\)\.classList\.toggle\("hidden", !result\.canManageUsers\)/);
   assert.match(app, /\/api\/admin\/agent\/settings/);
   assert.match(app, /个人配置仅自己可用|个人 API Key/);
+  assert.doesNotMatch(html, /id="voiceSettingsForm"/);
+  assert.match(app, /\/api\/agent\/voice-settings/);
 });
 
 test("user settings align account cards and explain how to configure a personal DeepSeek API key", () => {

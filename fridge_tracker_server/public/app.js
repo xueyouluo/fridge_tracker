@@ -2,6 +2,9 @@
 
 const $ = (selector) => document.querySelector(selector);
 const { renderMarkdown } = window.XianZhiMarkdown;
+const voiceControllers = new WeakMap();
+let activeVoiceController = null;
+let voiceRecordingOverlayOwner = null;
 
 function scrubSensitiveAuthQuery() {
   const url = new URL(window.location.href);
@@ -13,8 +16,11 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: false, canManageUsers: false, today: "", editingId: null, view: "overview" };
 const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
+const MAX_VOICE_RECORDING_MS = 60 * 1000;
+const VOICE_LONG_PRESS_MS = 280;
+const VOICE_CANCEL_DISTANCE_PX = 72;
 const views = new Set(["overview", "foods", "devices", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
@@ -38,6 +44,10 @@ const loginForm = $("#loginForm");
 const registerForm = $("#registerForm");
 const screenFrame = $("#screenFrame");
 const screenPreview = $("#screenPreview");
+const voiceRecordingOverlay = $("#voiceRecordingOverlay");
+const voiceRecordingTitle = $("#voiceRecordingTitle");
+const voiceRecordingHint = $("#voiceRecordingHint");
+const voiceRecordingWave = $("#voiceRecordingWave");
 const dialog = {
   overlay: $("#dialogOverlay"),
   eyebrow: $("#dialogEyebrow"),
@@ -499,7 +509,7 @@ async function enterWorkspace(user) {
   $("#accountName").textContent = displayName(user);
   $("#welcomeUser").textContent = displayName(user);
   await loadHousehold();
-  await Promise.all([loadFoods(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadConversations()]);
+  await Promise.all([loadFoods(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadVoiceSettings(), loadConversations()]);
   const initialView = location.hash.slice(1);
   setView(initialView || "overview", { updateHash: false, scroll: false });
   await handlePendingHouseholdInvite();
@@ -701,6 +711,12 @@ async function loadAiSettings() {
   $("#clearSystemAiSettings").disabled = !system.configured;
 }
 
+async function loadVoiceSettings() {
+  const result = await api("/api/agent/voice-settings");
+  state.voiceConfigured = result.configured;
+  [$("#agentForm"), $("#overviewAgentForm")].forEach(updateVoiceButtonAvailability);
+}
+
 async function loadConversations() {
   const result = await api("/api/agent/conversations");
   state.agentConfigured = result.configured;
@@ -720,12 +736,8 @@ async function loadConversations() {
         ? `系统额度剩余 ${result.quota.remaining} / ${result.quota.limit} 次输入`
         : "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
       : "Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent。";
-  $("#agentForm").classList.toggle("agent-disabled", !available);
-  $("#agentForm").querySelector("textarea").disabled = !available;
-  $("#agentForm").querySelector("button").disabled = !available;
-  $("#overviewAgentForm").classList.toggle("agent-disabled", !available);
-  $("#overviewAgentForm").querySelector("textarea").disabled = !available;
-  $("#overviewAgentForm").querySelector("button").disabled = !available;
+  setAgentFormAvailability($("#agentForm"), available);
+  setAgentFormAvailability($("#overviewAgentForm"), available);
   if (!result.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
     state.activeConversationId = result.conversations[0]?.id || null;
   }
@@ -1419,9 +1431,11 @@ $("#agentForm").addEventListener("submit", async (event) => {
   const content = textarea.value.trim();
   if (!content) return;
   if (!state.activeConversationId) await createConversation();
-  const button = event.target.querySelector("button");
+  const button = event.target.querySelector('[type="submit"]');
+  const voiceButton = event.target.querySelector("[data-voice-input]");
   textarea.disabled = true;
   button.disabled = true;
+  if (voiceButton) updateVoiceButtonAvailability(event.target);
   textarea.value = "";
   resizeAgentTextarea(textarea);
   $("#agentMessages").insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="agentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
@@ -1431,10 +1445,13 @@ $("#agentForm").addEventListener("submit", async (event) => {
     await Promise.all([loadConversations(), loadFoods()]);
   } catch (error) {
     $("#agentThinking")?.remove();
-    toast(error.message);
+    textarea.value = content;
+    resizeAgentTextarea(textarea);
+    toast(`发送失败，输入内容已保留：${agentSendErrorMessage(error)}`);
   } finally {
     textarea.disabled = !isAgentAvailable();
     button.disabled = !isAgentAvailable();
+    if (voiceButton) updateVoiceButtonAvailability(event.target);
     textarea.focus();
   }
 });
@@ -1445,9 +1462,11 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
   const content = textarea.value.trim();
   if (!content) return;
   await ensureOverviewConversation();
-  const button = event.target.querySelector("button");
+  const button = event.target.querySelector('[type="submit"]');
+  const voiceButton = event.target.querySelector("[data-voice-input]");
   textarea.disabled = true;
   button.disabled = true;
+  if (voiceButton) updateVoiceButtonAvailability(event.target);
   $("#overviewAgentResult").classList.remove("hidden");
   $("#overviewAgentResult").innerHTML = `<article class="agent-message assistant thinking"><div>正在处理…</div></article>`;
   try {
@@ -1456,11 +1475,13 @@ $("#overviewAgentForm").addEventListener("submit", async (event) => {
     $("#overviewAgentResult").innerHTML = renderAgentMessage(result.message);
     await Promise.all([loadConversations(), loadFoods()]);
   } catch (error) {
-    $("#overviewAgentResult").innerHTML = `<div class="agent-quick-error">${escapeHtml(error.message)}</div>`;
-    toast(error.message);
+    const message = agentSendErrorMessage(error);
+    $("#overviewAgentResult").innerHTML = `<div class="agent-quick-error">发送失败，输入内容已保留：${escapeHtml(message)}</div>`;
+    toast(`发送失败，输入内容已保留：${message}`);
   } finally {
     textarea.disabled = !isAgentAvailable();
     button.disabled = !isAgentAvailable();
+    if (voiceButton) updateVoiceButtonAvailability(event.target);
     textarea.focus();
   }
 });
@@ -1514,7 +1535,8 @@ function enableEnterToSubmit(form) {
   textarea.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
-    if (!textarea.disabled) form.requestSubmit();
+    const submitButton = form.querySelector('[type="submit"]');
+    if (!textarea.disabled && !submitButton.disabled) form.requestSubmit();
   });
 }
 
@@ -1523,15 +1545,444 @@ function resizeAgentTextarea(textarea) {
   textarea.style.height = `${Math.min(textarea.scrollHeight, 128)}px`;
 }
 
+function agentSendErrorMessage(error) {
+  if (error?.message === "Connection error.") return "无法连接家庭 Agent 模型，请检查用户页面里的模型配置";
+  return error?.message || "发送给助手失败，请稍后重试";
+}
+
 function enableAgentTextareaAutoGrow(form) {
   const textarea = form.querySelector("textarea");
   textarea.addEventListener("input", () => resizeAgentTextarea(textarea));
   resizeAgentTextarea(textarea);
 }
 
+function setAgentFormAvailability(form, available) {
+  form.classList.toggle("agent-disabled", !available);
+  form.querySelector("textarea").disabled = !available;
+  form.querySelector('[type="submit"]').disabled = !available;
+  if (!available) voiceControllers.get(form)?.abort();
+  updateVoiceButtonAvailability(form);
+}
+
+function updateVoiceButtonAvailability(form) {
+  const button = form.querySelector("[data-voice-input]");
+  const modeToggle = form.querySelector("[data-input-mode-toggle]");
+  if (!button) return;
+  const controller = voiceControllers.get(form);
+  const processing = controller?.isProcessing() === true;
+  const formUnavailable = form.querySelector("textarea")?.disabled === true;
+  const voiceUnavailable = !controller || formUnavailable || !state.agentConfigured || !state.voiceConfigured || processing;
+  button.disabled = voiceUnavailable;
+  if (modeToggle) modeToggle.disabled = voiceUnavailable;
+  button.title = !state.voiceConfigured
+    ? "系统语音识别尚未配置"
+    : "按住说话，松开发送";
+}
+
+function initializeVoiceRecordingWave() {
+  if (!voiceRecordingWave || voiceRecordingWave.childElementCount) return;
+  const bars = Array.from({ length: 38 }, (_, index) => {
+    const bar = document.createElement("span");
+    bar.style.setProperty("--voice-bar-height", `${10 + ((index * 13) % 25)}px`);
+    return bar;
+  });
+  voiceRecordingWave.replaceChildren(...bars);
+}
+
+function showVoiceRecordingOverlay(owner, { preparing = false } = {}) {
+  if (!voiceRecordingOverlay) return;
+  voiceRecordingOverlayOwner = owner;
+  voiceRecordingOverlay.classList.remove("hidden", "is-cancelling");
+  voiceRecordingOverlay.setAttribute("aria-hidden", "false");
+  voiceRecordingTitle.textContent = preparing ? "正在准备麦克风…" : "正在收音…";
+  voiceRecordingHint.textContent = "松手发送，上移取消";
+  document.body.classList.add("voice-recording-open");
+}
+
+function setVoiceRecordingCancelState(owner, cancelling) {
+  if (!voiceRecordingOverlay || voiceRecordingOverlayOwner !== owner) return;
+  voiceRecordingOverlay.classList.toggle("is-cancelling", cancelling);
+  voiceRecordingTitle.textContent = cancelling ? "松手取消" : "正在收音…";
+  voiceRecordingHint.textContent = cancelling ? "下移可继续录音" : "松手发送，上移取消";
+}
+
+function hideVoiceRecordingOverlay(owner) {
+  if (!voiceRecordingOverlay || (owner && voiceRecordingOverlayOwner !== owner)) return;
+  voiceRecordingOverlay.classList.add("hidden");
+  voiceRecordingOverlay.classList.remove("is-cancelling");
+  voiceRecordingOverlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("voice-recording-open");
+  voiceRecordingOverlayOwner = null;
+}
+
+function preferredAudioMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"];
+  if (typeof window.MediaRecorder?.isTypeSupported !== "function") return "";
+  return candidates.find((mimeType) => window.MediaRecorder.isTypeSupported(mimeType)) || "";
+}
+
+function audioBlobBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "").split(",", 2)[1] || ""), { once: true });
+    reader.addEventListener("error", () => reject(new Error("读取录音失败，请重试")), { once: true });
+    reader.readAsDataURL(blob);
+  });
+}
+
+function microphoneErrorMessage(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+    return window.isSecureContext
+      ? "未获得麦克风权限，请在浏览器设置中允许访问"
+      : "麦克风需要 HTTPS，请通过安全地址打开页面";
+  }
+  if (error?.name === "NotFoundError") return "没有找到可用的麦克风";
+  if (error?.name === "NotReadableError") return "麦克风正被其他应用占用";
+  return error?.message || "无法启动录音，请重试";
+}
+
+function setupVoiceInput(form) {
+  const button = form.querySelector("[data-voice-input]");
+  const textSurface = form.querySelector("[data-voice-text-surface]");
+  const modeToggle = form.querySelector("[data-input-mode-toggle]");
+  const status = form.querySelector("[data-voice-status]");
+  const textarea = form.querySelector("textarea");
+  const submitButton = form.querySelector('[type="submit"]');
+  const recordingSupported = Boolean(button && textSurface && modeToggle && status && navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  if (!recordingSupported) {
+    if (modeToggle) {
+      modeToggle.disabled = true;
+      modeToggle.title = "当前浏览器不支持网页录音";
+    }
+    return;
+  }
+
+  let recorder = null;
+  let stream = null;
+  let chunks = [];
+  let startedAt = 0;
+  let starting = false;
+  let recording = false;
+  let processing = false;
+  let releaseRequested = false;
+  let cancelRequested = false;
+  let maximumTimer = null;
+  let statusTimer = null;
+  let longPressTimer = null;
+  let pointerPress = null;
+
+  function updateStatus(text, { error = false, clearAfter = 0 } = {}) {
+    clearTimeout(statusTimer);
+    status.textContent = text;
+    status.classList.toggle("error", error);
+    if (clearAfter) {
+      statusTimer = setTimeout(() => {
+        status.textContent = "";
+        status.classList.remove("error");
+      }, clearAfter);
+    }
+  }
+
+  function stopStream() {
+    stream?.getTracks().forEach((track) => track.stop());
+    stream = null;
+  }
+
+  function setRecordingUi(active) {
+    form.classList.toggle("is-recording", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.setAttribute("aria-label", active ? "松开发送" : "按住说话，松开发送");
+    submitButton.disabled = active || processing || textarea.disabled || !state.agentConfigured;
+  }
+
+  function setInputMode(mode, { focus = false } = {}) {
+    const nextMode = mode === "voice" ? "voice" : "text";
+    form.dataset.inputMode = nextMode;
+    modeToggle.setAttribute("aria-label", nextMode === "voice" ? "切换到文本输入" : "切换到纯语音输入");
+    if (focus && nextMode === "text") {
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+  }
+
+  function resetPointerPress() {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    pointerPress = null;
+    form.classList.remove("is-long-press-pending");
+  }
+
+  async function finishRecording() {
+    clearTimeout(maximumTimer);
+    hideVoiceRecordingOverlay(controller);
+    const durationMs = Math.max(0, Date.now() - startedAt);
+    const mimeType = String(recorder?.mimeType || preferredAudioMimeType() || "audio/webm").split(";", 1)[0];
+    const blob = new Blob(chunks, { type: mimeType });
+    const cancelled = cancelRequested;
+    recorder = null;
+    chunks = [];
+    recording = false;
+    starting = false;
+    setRecordingUi(false);
+    stopStream();
+    if (activeVoiceController === controller) activeVoiceController = null;
+    if (cancelled) {
+      updateStatus("已取消录音", { clearAfter: 1800 });
+      updateVoiceButtonAvailability(form);
+      return;
+    }
+    if (durationMs < 350 || blob.size < 128) {
+      updateStatus("按住时间太短，请说完后再松开", { error: true, clearAfter: 3200 });
+      updateVoiceButtonAvailability(form);
+      return;
+    }
+
+    processing = true;
+    button.classList.add("is-processing");
+    updateVoiceButtonAvailability(form);
+    updateStatus("正在识别并发送…");
+    try {
+      const result = await api("/api/agent/transcriptions", {
+        method: "POST",
+        body: JSON.stringify({
+          mimeType,
+          audioBase64: await audioBlobBase64(blob),
+          durationMs
+        })
+      });
+      textarea.value = result.text;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      processing = false;
+      button.classList.remove("is-processing");
+      updateVoiceButtonAvailability(form);
+      button.disabled = true;
+      updateStatus("识别完成，正在发送…", { clearAfter: 1800 });
+      form.requestSubmit();
+    } catch (error) {
+      processing = false;
+      button.classList.remove("is-processing");
+      updateVoiceButtonAvailability(form);
+      updateStatus(error.message, { error: true, clearAfter: 4200 });
+      toast(error.message);
+    }
+  }
+
+  const controller = {
+    abort() {
+      resetPointerPress();
+      hideVoiceRecordingOverlay(controller);
+      if (starting) {
+        releaseRequested = true;
+        cancelRequested = true;
+        return;
+      }
+      if (!recording || recorder?.state === "inactive") return;
+      cancelRequested = true;
+      recorder.stop();
+    },
+    isBusy() {
+      return starting || recording || processing;
+    },
+    isProcessing() {
+      return processing;
+    }
+  };
+  voiceControllers.set(form, controller);
+
+  async function beginRecording() {
+    if (button.disabled || controller.isBusy()) return;
+    activeVoiceController?.abort();
+    activeVoiceController = controller;
+    releaseRequested = false;
+    cancelRequested = false;
+    starting = true;
+    setRecordingUi(true);
+    updateVoiceButtonAvailability(form);
+    updateStatus("正在请求麦克风…");
+    showVoiceRecordingOverlay(controller, { preparing: true });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false
+      });
+      if (releaseRequested) {
+        starting = false;
+        setRecordingUi(false);
+        hideVoiceRecordingOverlay(controller);
+        stopStream();
+        if (activeVoiceController === controller) activeVoiceController = null;
+        updateVoiceButtonAvailability(form);
+        updateStatus(cancelRequested ? "已取消录音" : "麦克风已就绪，请重新按住说话", { clearAfter: 2600 });
+        return;
+      }
+      const preferredMimeType = preferredAudioMimeType();
+      recorder = new MediaRecorder(stream, {
+        ...(preferredMimeType ? { mimeType: preferredMimeType } : {}),
+        audioBitsPerSecond: 32_000
+      });
+      chunks = [];
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) chunks.push(event.data);
+      });
+      recorder.addEventListener("stop", () => {
+        finishRecording().catch((error) => {
+          processing = false;
+          button.classList.remove("is-processing");
+          updateVoiceButtonAvailability(form);
+          updateStatus(error.message, { error: true, clearAfter: 4200 });
+        });
+      }, { once: true });
+      recorder.start(250);
+      startedAt = Date.now();
+      starting = false;
+      recording = true;
+      setRecordingUi(true);
+      updateVoiceButtonAvailability(form);
+      updateStatus("正在录音，松开发送");
+      showVoiceRecordingOverlay(controller);
+      setVoiceRecordingCancelState(controller, pointerPress?.cancelling === true);
+      maximumTimer = setTimeout(() => {
+        updateStatus("已到 60 秒，正在识别并发送…");
+        hideVoiceRecordingOverlay(controller);
+        if (recorder?.state === "recording") recorder.stop();
+      }, MAX_VOICE_RECORDING_MS);
+    } catch (error) {
+      starting = false;
+      recording = false;
+      setRecordingUi(false);
+      hideVoiceRecordingOverlay(controller);
+      stopStream();
+      if (activeVoiceController === controller) activeVoiceController = null;
+      updateVoiceButtonAvailability(form);
+      updateStatus(microphoneErrorMessage(error), { error: true, clearAfter: 4200 });
+    }
+  }
+
+  function releaseRecording(cancel = false) {
+    if (starting) {
+      releaseRequested = true;
+      cancelRequested = cancel;
+      hideVoiceRecordingOverlay(controller);
+      return;
+    }
+    if (!recording || recorder?.state !== "recording") return;
+    cancelRequested = cancel;
+    hideVoiceRecordingOverlay(controller);
+    recorder.stop();
+  }
+
+  function focusTextarea() {
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+
+  function handlePointerDown(event, source, { delayed = false } = {}) {
+    if (event.button !== 0) return;
+    if (button.disabled || controller.isBusy()) return;
+    event.preventDefault();
+    resetPointerPress();
+    source.setPointerCapture?.(event.pointerId);
+    pointerPress = {
+      pointerId: event.pointerId,
+      source,
+      startX: event.clientX,
+      startY: event.clientY,
+      activated: !delayed,
+      suppressTap: false,
+      cancelling: false
+    };
+    if (!delayed) {
+      beginRecording();
+      return;
+    }
+    form.classList.add("is-long-press-pending");
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      if (!pointerPress) return;
+      pointerPress.activated = true;
+      form.classList.remove("is-long-press-pending");
+      navigator.vibrate?.(12);
+      beginRecording();
+    }, VOICE_LONG_PRESS_MS);
+  }
+
+  function handlePointerMove(event) {
+    if (!pointerPress || pointerPress.pointerId !== event.pointerId) return;
+    const horizontalDistance = Math.abs(event.clientX - pointerPress.startX);
+    const verticalDistance = Math.abs(event.clientY - pointerPress.startY);
+    if (!pointerPress.activated) {
+      if (Math.max(horizontalDistance, verticalDistance) > 12) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        pointerPress.suppressTap = true;
+        form.classList.remove("is-long-press-pending");
+      }
+      return;
+    }
+    event.preventDefault();
+    const cancelling = pointerPress.startY - event.clientY >= VOICE_CANCEL_DISTANCE_PX;
+    if (cancelling === pointerPress.cancelling) return;
+    pointerPress.cancelling = cancelling;
+    setVoiceRecordingCancelState(controller, cancelling);
+  }
+
+  function handlePointerUp(event) {
+    if (!pointerPress || pointerPress.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const { activated, cancelling, source, suppressTap } = pointerPress;
+    resetPointerPress();
+    if (activated) {
+      releaseRecording(cancelling);
+      return;
+    }
+    if (!suppressTap && source === textSurface) focusTextarea();
+  }
+
+  function handlePointerCancel(event) {
+    if (!pointerPress || pointerPress.pointerId !== event.pointerId) return;
+    const activated = pointerPress.activated;
+    resetPointerPress();
+    if (activated) releaseRecording(true);
+  }
+
+  textSurface.addEventListener("pointerdown", (event) => handlePointerDown(event, textSurface, { delayed: true }));
+  textSurface.addEventListener("pointermove", handlePointerMove);
+  textSurface.addEventListener("pointerup", handlePointerUp);
+  textSurface.addEventListener("pointercancel", handlePointerCancel);
+  textSurface.addEventListener("contextmenu", (event) => {
+    if (form.classList.contains("is-long-press-pending") || controller.isBusy()) event.preventDefault();
+  });
+  button.addEventListener("pointerdown", (event) => handlePointerDown(event, button));
+  button.addEventListener("pointermove", handlePointerMove);
+  button.addEventListener("pointerup", handlePointerUp);
+  button.addEventListener("pointercancel", handlePointerCancel);
+  button.addEventListener("keydown", (event) => {
+    if (![" ", "Enter"].includes(event.key) || event.repeat) return;
+    event.preventDefault();
+    beginRecording();
+  });
+  button.addEventListener("keyup", (event) => {
+    if (![" ", "Enter"].includes(event.key)) return;
+    event.preventDefault();
+    releaseRecording(false);
+  });
+  button.addEventListener("click", (event) => event.preventDefault());
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
+  modeToggle.addEventListener("click", () => {
+    if (modeToggle.disabled || controller.isBusy()) return;
+    setInputMode(form.dataset.inputMode === "voice" ? "text" : "voice", { focus: form.dataset.inputMode === "voice" });
+  });
+  button.hidden = false;
+  setInputMode("text");
+  updateVoiceButtonAvailability(form);
+}
+
+initializeVoiceRecordingWave();
 enableEnterToSubmit($("#agentForm"));
 enableEnterToSubmit($("#overviewAgentForm"));
 enableAgentTextareaAutoGrow($("#agentForm"));
+setupVoiceInput($("#agentForm"));
+setupVoiceInput($("#overviewAgentForm"));
 
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
