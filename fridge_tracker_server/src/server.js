@@ -1150,6 +1150,22 @@ const server = http.createServer(async (req, res) => {
       servePublic(res, "styles.css", "text/css; charset=utf-8");
       return;
     }
+    if (req.method === "GET" && url.pathname === "/manifest.webmanifest") {
+      servePublic(res, "manifest.webmanifest", "application/manifest+json; charset=utf-8");
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/icons/apple-touch-icon.png") {
+      servePublic(res, "icons/apple-touch-icon.png", "image/png");
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/icons/icon-192.png") {
+      servePublic(res, "icons/icon-192.png", "image/png");
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/icons/icon-512.png") {
+      servePublic(res, "icons/icon-512.png", "image/png");
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/favicon.svg") {
       servePublic(res, "favicon.svg", "image/svg+xml; charset=utf-8");
       return;
