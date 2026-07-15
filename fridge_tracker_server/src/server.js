@@ -940,6 +940,25 @@ async function routeApi(req, res, url) {
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/foods/batch") {
+    const body = await readJson(req);
+    if (body.operation === "delete") {
+      const results = foodService.deleteFoodItems(householdId, body.ids);
+      sendJson(res, 200, { ok: true, count: results.length, results });
+      return true;
+    }
+    if (body.operation === "update_expiry") {
+      const items = (body.ids || []).map((id) => ({
+        id,
+        patch: { expiresOn: body.expiresOn, startDate: null, shelfLifeDays: null }
+      }));
+      const results = foodService.updateFoodItems(householdId, items);
+      sendJson(res, 200, { ok: true, count: results.length, results });
+      return true;
+    }
+    throw new Error("unsupported batch food operation");
+  }
+
   if (req.method === "POST" && url.pathname === "/api/foods") {
     sendJson(res, 201, foodService.createFoodItem(householdId, await readJson(req)));
     return true;

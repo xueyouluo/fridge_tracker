@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>鲜知贴</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=20260714-6">
+  <link rel="stylesheet" href="/styles.css?v=20260715-2">
 </head>
 <body>
   <header class="topbar">
@@ -134,15 +134,40 @@
           </div>
         </div>
         <div class="food-layout food-list-layout">
-          <section class="panel collection">
-            <div class="section-head"><h2>全部记录</h2><span class="muted">按紧急程度排序</span></div>
-            <div class="table-frame">
-              <table class="food-table">
-                <thead>
-                  <tr><th>食材</th><th>分类</th><th>到期日</th><th>状态</th><th>操作</th></tr>
-                </thead>
-                <tbody id="foods"></tbody>
-              </table>
+          <section class="panel collection food-collection">
+            <div class="food-list-head">
+              <div><h2>全部记录</h2><span id="foodListSummary" class="muted">按紧急程度分组</span></div>
+              <div class="food-list-tools">
+                <div class="food-list-menu" data-food-menu="status">
+                  <button id="foodStatusFilter" class="food-filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="foodStatusMenu">
+                    <span data-food-menu-label>全部状态</span><span class="food-filter-chevron" aria-hidden="true"></span>
+                  </button>
+                  <div id="foodStatusMenu" class="food-filter-menu hidden" role="listbox" aria-label="筛选食材">
+                    <button type="button" role="option" aria-selected="true" data-food-list-type="status" data-food-list-value="all">全部状态</button>
+                    <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="expired">已过期</button>
+                    <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="expiring">即将到期</button>
+                    <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="normal">新鲜</button>
+                  </div>
+                </div>
+                <div class="food-list-menu" data-food-menu="sort">
+                  <button id="foodSortOrder" class="food-filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="foodSortMenu">
+                    <span data-food-menu-label>紧急优先</span><span class="food-filter-chevron" aria-hidden="true"></span>
+                  </button>
+                  <div id="foodSortMenu" class="food-filter-menu hidden" role="listbox" aria-label="食材排序">
+                    <button type="button" role="option" aria-selected="true" data-food-list-type="sort" data-food-list-value="urgency">紧急优先</button>
+                    <button type="button" role="option" aria-selected="false" data-food-list-type="sort" data-food-list-value="name">名称排序</button>
+                  </div>
+                </div>
+                <button id="foodManageToggle" class="food-manage-toggle" type="button" aria-pressed="false">管理</button>
+              </div>
+            </div>
+            <div id="foods" class="food-groups" aria-live="polite"></div>
+            <div id="foodBatchBar" class="food-batch-bar hidden" aria-live="polite">
+              <strong id="foodBatchCount">已选 0 项</strong>
+              <div>
+                <button id="foodBatchDate" class="primary" type="button" disabled>修改日期</button>
+                <button id="foodBatchDelete" class="food-batch-delete" type="button" disabled>删除</button>
+              </div>
             </div>
           </section>
         </div>
@@ -481,10 +506,22 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
         </div>
       </section>
     </div>
+    <div id="batchFoodDateOverlay" class="dialog-overlay hidden" aria-hidden="true">
+      <section class="dialog-card batch-food-date-card" role="dialog" aria-modal="true" aria-labelledby="batchFoodDateTitle" aria-describedby="batchFoodDateBody">
+        <p class="dialog-eyebrow">批量修改</p>
+        <h2 id="batchFoodDateTitle">设置新的到期日</h2>
+        <p id="batchFoodDateBody" class="dialog-body">所选食材将统一使用这个到期日期。</p>
+        <label class="batch-food-date-field">到期日<input id="batchFoodDateInput" type="date" required></label>
+        <div class="dialog-actions">
+          <button id="batchFoodDateCancel" class="dialog-cancel" type="button">取消</button>
+          <button id="batchFoodDateSave" class="dialog-confirm" type="button">保存</button>
+        </div>
+      </section>
+    </div>
     <p id="message" class="message" role="status"></p>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260714-6"></script>
+  <script src="/app.js?v=20260715-2"></script>
 </body>
 </html>

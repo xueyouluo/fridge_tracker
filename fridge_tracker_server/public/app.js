@@ -16,7 +16,7 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview" };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
 const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
@@ -34,6 +34,12 @@ const foodEditor = {
   close: $("#foodEditorClose"),
   cancel: $("#foodEditorCancel"),
   save: $("#saveFood")
+};
+const batchFoodDate = {
+  overlay: $("#batchFoodDateOverlay"),
+  input: $("#batchFoodDateInput"),
+  cancel: $("#batchFoodDateCancel"),
+  save: $("#batchFoodDateSave")
 };
 const CATEGORY_OPTIONS = [
   ["水果", "🍓"], ["蔬菜", "🥬"], ["肉类", "🥩"], ["海鲜", "🐟"],
@@ -575,12 +581,13 @@ async function loadFoods() {
   const result = await api("/api/foods");
   state.foods = result.items;
   state.today = result.today;
+  const currentIds = new Set(result.items.map((item) => item.id));
+  state.foodList.selectedIds = new Set([...state.foodList.selectedIds].filter((id) => currentIds.has(id)));
+  if (!currentIds.has(state.foodList.expandedId)) state.foodList.expandedId = null;
   $("#foodCount").textContent = `${result.items.length} 项食材`;
   $("#todayText").textContent = `今天 ${result.today} · 按到期紧急度排序`;
   renderMetrics();
-  $("#foods").innerHTML = result.items.length
-    ? result.items.map(renderFood).join("")
-    : `<tr><td class="table-empty" colspan="5">尚未添加食材。</td></tr>`;
+  renderFoodList();
   $("#overviewFoods").innerHTML = result.items.length
     ? result.items.slice(0, 4).map(renderPriorityFood).join("")
     : `<p class="muted">添加食材后，这里会优先展示即将到期的内容。</p>`;
@@ -608,17 +615,198 @@ function renderPriorityFood(item) {
   </article>`;
 }
 
+const FOOD_LIST_GROUPS = [
+  { status: "expired", label: "已过期" },
+  { status: "expiring", label: "即将到期" },
+  { status: "normal", label: "新鲜" }
+];
+const FOOD_LIST_MENU_LABELS = {
+  status: { all: "全部状态", expired: "已过期", expiring: "即将到期", normal: "新鲜" },
+  sort: { urgency: "紧急优先", name: "名称排序" }
+};
+
+function closeFoodListMenus({ restoreFocus = false } = {}) {
+  let openTrigger = null;
+  document.querySelectorAll(".food-list-menu").forEach((menu) => {
+    const trigger = menu.querySelector(".food-filter-trigger");
+    const popup = menu.querySelector(".food-filter-menu");
+    if (trigger.getAttribute("aria-expanded") === "true") openTrigger = trigger;
+    trigger.setAttribute("aria-expanded", "false");
+    popup.classList.add("hidden");
+  });
+  if (restoreFocus && openTrigger) openTrigger.focus({ preventScroll: true });
+}
+
+function syncFoodListMenu(type, value) {
+  const menu = $(`[data-food-menu="${type}"]`);
+  menu.querySelector("[data-food-menu-label]").textContent = FOOD_LIST_MENU_LABELS[type][value];
+  menu.querySelectorAll("[data-food-list-value]").forEach((option) => {
+    option.setAttribute("aria-selected", String(option.dataset.foodListValue === value));
+  });
+}
+
+function toggleFoodListMenu(type) {
+  const menu = $(`[data-food-menu="${type}"]`);
+  const trigger = menu.querySelector(".food-filter-trigger");
+  const popup = menu.querySelector(".food-filter-menu");
+  const shouldOpen = trigger.getAttribute("aria-expanded") !== "true";
+  closeFoodListMenus();
+  if (!shouldOpen || trigger.disabled) return;
+  trigger.setAttribute("aria-expanded", "true");
+  popup.classList.remove("hidden");
+  window.requestAnimationFrame(() => popup.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }));
+}
+
+function compactStatusText(item) {
+  if (item.status === "expired") return `过期 ${Math.abs(item.daysRemaining)} 天`;
+  if (item.daysRemaining === 0) return "今天";
+  return `${item.daysRemaining} 天`;
+}
+
+function compactFoodDate(dateKey) {
+  const parts = String(dateKey || "").split("-");
+  return parts.length === 3 ? `${parts[1]}-${parts[2]}` : String(dateKey || "");
+}
+
+function visibleFoodItems() {
+  const filtered = state.foodList.filter === "all"
+    ? [...state.foods]
+    : state.foods.filter((item) => item.status === state.foodList.filter);
+  if (state.foodList.sort === "name") {
+    filtered.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+  }
+  return filtered;
+}
+
 function renderFood(item) {
-  return `<tr class="food-row">
-    <td data-label="食材"><strong class="food-name">${escapeHtml(item.name)}</strong>${item.quantityText ? `<small>${escapeHtml(item.quantityText)}</small>` : ""}</td>
-    <td data-label="分类"><span class="category-pill">${escapeHtml(item.category)}</span></td>
-    <td data-label="到期日" class="food-date">${escapeHtml(item.expiresOn)}</td>
-    <td data-label="状态"><span class="tag ${item.status}">${escapeHtml(statusText(item))}</span></td>
-    <td data-label="操作"><div class="actions">
-      <button type="button" data-edit="${item.id}">编辑</button>
-      <button type="button" class="delete" data-delete="${item.id}">删除</button>
-    </div></td>
-  </tr>`;
+  const expanded = !state.foodList.managing && state.foodList.expandedId === item.id;
+  const selected = state.foodList.selectedIds.has(item.id);
+  const summary = `<span class="food-row-summary">
+    <span class="food-row-primary"><strong>${escapeHtml(item.name)}</strong>${item.quantityText ? `<span>${escapeHtml(item.quantityText)}</span>` : ""}</span>
+    <span class="food-row-meta">${escapeHtml(item.category)} · 到期 ${escapeHtml(compactFoodDate(item.expiresOn))}</span>
+  </span>`;
+  if (state.foodList.managing) {
+    return `<article class="food-list-row ${item.status} ${selected ? "selected" : ""}">
+      <label class="food-row-select">
+        <input type="checkbox" data-food-select="${item.id}" ${selected ? "checked" : ""}>
+        <span class="sr-only">选择${escapeHtml(item.name)}</span>
+      </label>
+      ${summary}
+      <span class="food-urgency ${item.status}">${escapeHtml(compactStatusText(item))}</span>
+    </article>`;
+  }
+  return `<article class="food-list-row ${item.status} ${expanded ? "expanded" : ""}">
+    <button class="food-row-toggle" type="button" data-food-expand="${item.id}" aria-expanded="${expanded}"${expanded ? ` aria-controls="food-details-${item.id}"` : ""}>
+      ${summary}
+      <span class="food-urgency ${item.status}">${escapeHtml(compactStatusText(item))}</span>
+      <span class="food-row-chevron" aria-hidden="true">${expanded ? "⌃" : "⌄"}</span>
+    </button>
+    ${expanded ? `<div id="food-details-${item.id}" class="food-row-details">
+      <dl>
+        <div><dt>分类</dt><dd>${escapeHtml(item.category)}</dd></div>
+        <div><dt>到期日</dt><dd>${escapeHtml(item.expiresOn)}</dd></div>
+        <div><dt>数量</dt><dd>${escapeHtml(item.quantityText || "未填写")}</dd></div>
+      </dl>
+      <div class="food-detail-actions">
+        <button type="button" data-edit="${item.id}">编辑</button>
+        <button type="button" class="delete" data-delete="${item.id}">删除</button>
+      </div>
+    </div>` : ""}
+  </article>`;
+}
+
+function renderFoodGroup(group, items) {
+  if (!items.length) return "";
+  const labelId = `food-group-${group.status}`;
+  return `<section class="food-group" aria-labelledby="${labelId}">
+    <div class="food-group-label" id="${labelId}"><span>${group.label}</span><strong>${items.length}</strong></div>
+    <div class="food-group-rows">${items.map(renderFood).join("")}</div>
+  </section>`;
+}
+
+function renderFoodList() {
+  const items = visibleFoodItems();
+  $("#foodListSummary").textContent = state.foodList.filter === "all"
+    ? `共 ${items.length} 项 · 按状态分组`
+    : `筛选结果 ${items.length} 项`;
+  $("#foodManageToggle").textContent = state.foodList.managing ? "完成" : "管理";
+  $("#foodManageToggle").setAttribute("aria-pressed", String(state.foodList.managing));
+  $("#foodStatusFilter").disabled = state.foodList.managing;
+  $("#foodSortOrder").disabled = state.foodList.managing;
+  syncFoodListMenu("status", state.foodList.filter);
+  syncFoodListMenu("sort", state.foodList.sort);
+  if (state.foodList.managing) closeFoodListMenus();
+  $("#foods").classList.toggle("managing", state.foodList.managing);
+  $("#foods").innerHTML = items.length
+    ? FOOD_LIST_GROUPS.map((group) => renderFoodGroup(group, items.filter((item) => item.status === group.status))).join("")
+    : `<div class="food-list-empty">${state.foods.length ? "没有符合筛选条件的食材。" : "尚未添加食材。"}</div>`;
+
+  const selectedCount = state.foodList.selectedIds.size;
+  $("#foodBatchBar").classList.toggle("hidden", !state.foodList.managing);
+  $("#foodBatchCount").textContent = `已选 ${selectedCount} 项`;
+  $("#foodBatchDate").disabled = selectedCount === 0;
+  $("#foodBatchDelete").disabled = selectedCount === 0;
+}
+
+function setFoodManagement(managing) {
+  state.foodList.managing = managing;
+  state.foodList.expandedId = null;
+  if (!managing) state.foodList.selectedIds.clear();
+  renderFoodList();
+}
+
+function selectedFoodIds() {
+  return [...state.foodList.selectedIds];
+}
+
+function openBatchFoodDate() {
+  batchFoodDate.input.value = state.today || currentDateKey();
+  batchFoodDate.overlay.classList.remove("hidden");
+  batchFoodDate.overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  batchFoodDate.input.focus();
+}
+
+function closeBatchFoodDate() {
+  batchFoodDate.overlay.classList.add("hidden");
+  batchFoodDate.overlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  $("#foodBatchDate").focus({ preventScroll: true });
+}
+
+async function deleteSelectedFoods() {
+  const ids = selectedFoodIds();
+  if (!ids.length) return;
+  const confirmed = await confirmDialog({
+    eyebrow: "批量删除",
+    title: `确定删除所选 ${ids.length} 项食材吗？`,
+    body: "删除后，这些食材会从家庭记录中移除，墨水屏下次刷新时同步更新。",
+    confirmText: "删除",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+  await api("/api/foods/batch", { method: "POST", body: JSON.stringify({ operation: "delete", ids }) });
+  state.foodList.selectedIds.clear();
+  await loadFoods();
+  toast(`已删除 ${ids.length} 项食材`);
+}
+
+async function updateSelectedFoodExpiry() {
+  const ids = selectedFoodIds();
+  const expiresOn = batchFoodDate.input.value;
+  if (!ids.length || !expiresOn) return;
+  batchFoodDate.save.disabled = true;
+  try {
+    await api("/api/foods/batch", { method: "POST", body: JSON.stringify({ operation: "update_expiry", ids, expiresOn }) });
+    closeBatchFoodDate();
+    state.foodList.selectedIds.clear();
+    await loadFoods();
+    toast(`已更新 ${ids.length} 项食材的到期日`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    batchFoodDate.save.disabled = false;
+  }
 }
 
 async function loadDevices() {
@@ -1117,6 +1305,13 @@ if ("ResizeObserver" in window) {
 }
 
 $("#foods").addEventListener("click", async (event) => {
+  const expand = event.target.closest("[data-food-expand]");
+  if (expand) {
+    const id = Number(expand.dataset.foodExpand);
+    state.foodList.expandedId = state.foodList.expandedId === id ? null : id;
+    renderFoodList();
+    return;
+  }
   const edit = event.target.closest("[data-edit]");
   if (edit) {
     editFood(Number(edit.dataset.edit), edit);
@@ -1143,6 +1338,70 @@ $("#foods").addEventListener("click", async (event) => {
       toast(error.message);
     }
   }
+});
+
+$("#foods").addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-food-select]");
+  if (!checkbox) return;
+  const id = Number(checkbox.dataset.foodSelect);
+  if (checkbox.checked) state.foodList.selectedIds.add(id);
+  else state.foodList.selectedIds.delete(id);
+  renderFoodList();
+});
+
+document.querySelectorAll(".food-filter-trigger").forEach((trigger) => {
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFoodListMenu(trigger.closest("[data-food-menu]").dataset.foodMenu);
+  });
+});
+
+$(".food-list-tools").addEventListener("click", (event) => {
+  const option = event.target.closest("[data-food-list-value]");
+  if (!option) return;
+  event.stopPropagation();
+  const type = option.dataset.foodListType;
+  if (type === "status") state.foodList.filter = option.dataset.foodListValue;
+  if (type === "sort") state.foodList.sort = option.dataset.foodListValue;
+  state.foodList.expandedId = null;
+  closeFoodListMenus();
+  renderFoodList();
+  $(`[data-food-menu="${type}"] .food-filter-trigger`).focus({ preventScroll: true });
+});
+
+$(".food-list-tools").addEventListener("keydown", (event) => {
+  const option = event.target.closest("[data-food-list-value]");
+  if (event.key === "Escape") {
+    closeFoodListMenus({ restoreFocus: true });
+    return;
+  }
+  if (!option || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const options = [...option.closest(".food-filter-menu").querySelectorAll("[data-food-list-value]")];
+  const index = options.indexOf(option);
+  const target = event.key === "Home" ? options[0]
+    : event.key === "End" ? options.at(-1)
+      : options[(index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length];
+  target.focus({ preventScroll: true });
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".food-list-menu")) closeFoodListMenus();
+});
+
+$("#foodManageToggle").addEventListener("click", () => setFoodManagement(!state.foodList.managing));
+$("#foodBatchDate").addEventListener("click", openBatchFoodDate);
+$("#foodBatchDelete").addEventListener("click", async () => {
+  try {
+    await deleteSelectedFoods();
+  } catch (error) {
+    toast(error.message);
+  }
+});
+batchFoodDate.cancel.addEventListener("click", closeBatchFoodDate);
+batchFoodDate.save.addEventListener("click", updateSelectedFoodExpiry);
+batchFoodDate.overlay.addEventListener("click", (event) => {
+  if (event.target === batchFoodDate.overlay) closeBatchFoodDate();
 });
 
 $("#generatePairingCode").addEventListener("click", async () => {
