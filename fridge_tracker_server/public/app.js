@@ -17,7 +17,7 @@ function scrubSensitiveAuthQuery() {
 
 scrubSensitiveAuthQuery();
 const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
-const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
+const QUICK_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
 const VOICE_CANCEL_DISTANCE_PX = 72;
@@ -183,6 +183,11 @@ function setView(view, options = {}) {
   state.view = target;
   document.body.classList.toggle("agent-view-active", target === "agent");
   document.body.classList.toggle("presentation-view-active", target === "display");
+  $("#quickAgentForm").classList.toggle("hidden", !state.user || target === "agent" || target === "display");
+  if (target === "agent" || target === "display") {
+    closeQuickAgent();
+    voiceControllers.get($("#quickAgentForm"))?.abort();
+  }
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.viewPanel === target);
   });
@@ -1027,9 +1032,9 @@ async function loadVoiceSettings() {
   const result = await api("/api/agent/voice-settings");
   state.voiceConfigured = result.configured;
   if (!result.configured) {
-    [$("#agentForm"), $("#overviewAgentForm")].forEach((form) => voiceControllers.get(form)?.switchMode("text"));
+    [$("#agentForm"), $("#quickAgentForm")].forEach((form) => voiceControllers.get(form)?.switchMode("text"));
   }
-  [$("#agentForm"), $("#overviewAgentForm")].forEach(updateVoiceButtonAvailability);
+  [$("#agentForm"), $("#quickAgentForm")].forEach(updateVoiceButtonAvailability);
 }
 
 async function loadConversations() {
@@ -1044,14 +1049,16 @@ async function loadConversations() {
     : result.mode === "system"
       ? result.quota.remaining > 0 ? `系统 Agent 已连接 · 剩余 ${result.quota.remaining} 次` : "系统输入额度已用完"
       : "Agent 未配置";
-  $("#overviewAgentStatus").textContent = result.mode === "system" && result.quota.remaining <= 0
+  $("#quickAgentAvailability").textContent = result.mode === "system" && result.quota.remaining <= 0
     ? "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
     : result.mode === "unconfigured"
       ? "Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent。"
       : "";
   setAgentFormAvailability($("#agentForm"), available);
-  setAgentFormAvailability($("#overviewAgentForm"), available);
-  setOverviewExamplesAvailability(available);
+  setAgentFormAvailability($("#quickAgentForm"), available);
+  document.querySelectorAll("[data-quick-agent-prompt]").forEach((button) => {
+    button.disabled = !available;
+  });
   if (!result.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
     state.activeConversationId = result.conversations[0]?.id || null;
   }
@@ -1147,14 +1154,46 @@ async function createConversation() {
   return conversation;
 }
 
-async function ensureOverviewConversation() {
+async function ensureQuickConversation() {
   const latest = state.conversations[0];
   const updatedAt = Date.parse(latest?.updatedAt || "");
-  if (latest && Number.isFinite(updatedAt) && Date.now() - updatedAt <= OVERVIEW_CONVERSATION_REUSE_MS) {
+  if (latest && Number.isFinite(updatedAt) && Date.now() - updatedAt <= QUICK_CONVERSATION_REUSE_MS) {
     state.activeConversationId = latest.id;
     return latest;
   }
   return createConversation();
+}
+
+function quickAgentEmptyMarkup() {
+  return `<div class="agent-empty"><strong>按住右下角说话</strong><span>也可以在下方输入文字继续对话。</span></div>`;
+}
+
+async function loadQuickAgentMessages() {
+  const container = $("#quickAgentMessages");
+  if (!state.activeConversationId) {
+    container.innerHTML = quickAgentEmptyMarkup();
+    return;
+  }
+  const result = await api(`/api/agent/conversations/${encodeURIComponent(state.activeConversationId)}/messages`);
+  const seenPendingIds = new Set();
+  container.innerHTML = result.messages.length
+    ? result.messages.map((message) => renderAgentMessage(message, seenPendingIds)).join("")
+    : quickAgentEmptyMarkup();
+  container.scrollTop = container.scrollHeight;
+}
+
+function openQuickAgent({ focus = true, loadMessages = true } = {}) {
+  if (!state.user || state.view === "agent") return;
+  $("#quickAgentDialog").classList.remove("hidden");
+  if (loadMessages) loadQuickAgentMessages().catch((error) => toast(error.message));
+  if (focus) {
+    const textarea = $("#quickAgentForm").elements.content;
+    if (!textarea.disabled) textarea.focus({ preventScroll: true });
+  }
+}
+
+function closeQuickAgent() {
+  $("#quickAgentDialog").classList.add("hidden");
 }
 
 function displayName(user) {
@@ -1822,7 +1861,10 @@ window.addEventListener("resize", () => {
   if (!window.matchMedia("(max-width: 640px)").matches) setConversationListOpen(false);
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") setConversationListOpen(false);
+  if (event.key === "Escape") {
+    setConversationListOpen(false);
+    closeQuickAgent();
+  }
 });
 
 $("#agentForm").addEventListener("submit", async (event) => {
@@ -1856,51 +1898,58 @@ $("#agentForm").addEventListener("submit", async (event) => {
   }
 });
 
-$("#overviewAgentForm").addEventListener("submit", async (event) => {
+$("#quickAgentForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const textarea = event.target.elements.content;
   const content = textarea.value.trim();
   if (!content) return;
-  await ensureOverviewConversation();
+  openQuickAgent({ focus: false, loadMessages: false });
+  const messages = $("#quickAgentMessages");
+  messages.querySelector(".agent-empty")?.remove();
+  $("#quickAgentThinking")?.remove();
+  messages.insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="quickAgentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
+  messages.scrollTop = messages.scrollHeight;
+  await ensureQuickConversation();
   const button = event.target.querySelector('[type="submit"]');
   const voiceButton = event.target.querySelector("[data-voice-input]");
   textarea.disabled = true;
   button.disabled = true;
-  setOverviewExamplesAvailability(false);
   if (voiceButton) updateVoiceButtonAvailability(event.target);
-  $("#overviewAgentResult").classList.remove("hidden");
-  $("#overviewAgentResult").innerHTML = `<article class="agent-message assistant thinking"><div>正在处理…</div></article>`;
   try {
-    const result = await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
+    await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
     textarea.value = "";
-    $("#overviewAgentResult").innerHTML = renderAgentMessage(result.message);
+    resizeAgentTextarea(textarea);
     await Promise.all([loadConversations(), loadFoods()]);
+    await loadQuickAgentMessages();
   } catch (error) {
-    const message = agentSendErrorMessage(error);
-    $("#overviewAgentResult").innerHTML = `<div class="agent-quick-error">发送失败，输入内容已保留：${escapeHtml(message)}</div>`;
-    toast(`发送失败，输入内容已保留：${message}`);
+    $("#quickAgentThinking")?.remove();
+    textarea.value = content;
+    resizeAgentTextarea(textarea);
+    const errorMessage = agentSendErrorMessage(error);
+    messages.insertAdjacentHTML("beforeend", `<div class="agent-quick-error">发送失败，输入内容已保留：${escapeHtml(errorMessage)}</div>`);
+    messages.scrollTop = messages.scrollHeight;
+    toast(`发送失败，输入内容已保留：${errorMessage}`);
   } finally {
     textarea.disabled = !isAgentAvailable();
     button.disabled = !isAgentAvailable();
     if (voiceButton) updateVoiceButtonAvailability(event.target);
-    setOverviewExamplesAvailability(isAgentAvailable());
-    textarea.focus();
+    if (!$("#quickAgentDialog").classList.contains("hidden") && !textarea.disabled) textarea.focus();
   }
 });
 
-document.querySelector(".agent-example-list").addEventListener("click", (event) => {
-  const example = event.target.closest("[data-agent-example]");
-  if (!example || example.disabled) return;
-  const form = $("#overviewAgentForm");
+$("#quickAgentClose").addEventListener("click", closeQuickAgent);
+$("#quickAgentOpenFull").addEventListener("click", () => setView("agent"));
+document.querySelector(".overview-agent-shortcuts").addEventListener("click", (event) => {
+  const shortcut = event.target.closest("[data-quick-agent-prompt]");
+  if (!shortcut || shortcut.disabled) return;
+  const form = $("#quickAgentForm");
   const textarea = form.elements.content;
-  if (textarea.disabled) return;
-  textarea.value = example.dataset.agentExample;
+  textarea.value = shortcut.dataset.quickAgentPrompt;
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
   form.requestSubmit();
 });
 
 async function handleAgentActionClick(event) {
-  const actionContainer = event.currentTarget;
   const confirm = event.target.closest("[data-agent-confirm]");
   const cancel = event.target.closest("[data-agent-cancel]");
   if (!confirm && !cancel) return;
@@ -1918,13 +1967,8 @@ async function handleAgentActionClick(event) {
   actionButton.textContent = confirm ? "正在执行并生成回复…" : "正在取消…";
   try {
     const result = await api(`/api/agent/actions/${encodeURIComponent(id)}/${confirm ? "confirm" : "cancel"}`, { method: "POST", body: "{}" });
-    await Promise.all([loadAgentMessages(), loadFoods()]);
+    await Promise.all([loadAgentMessages(), loadQuickAgentMessages(), loadFoods()]);
     if (state.view === "devices") refreshPreview();
-    if (actionContainer.id === "overviewAgentResult") {
-      actionContainer.innerHTML = result.message
-        ? renderAgentMessage(result.message)
-        : `<div class="agent-result">${confirm ? "操作已确认执行" : "操作已取消"}</div>`;
-    }
     const completedText = result.alreadyResolved
       ? (result.resolution === "confirmed" ? "操作已经执行，无需重复确认" : "操作已经取消")
       : (confirm ? "操作已确认执行" : "操作已取消");
@@ -1941,7 +1985,7 @@ async function handleAgentActionClick(event) {
 }
 
 $("#agentMessages").addEventListener("click", handleAgentActionClick);
-$("#overviewAgentResult").addEventListener("click", handleAgentActionClick);
+$("#quickAgentMessages").addEventListener("click", handleAgentActionClick);
 
 function enableEnterToSubmit(form) {
   const textarea = form.querySelector("textarea");
@@ -1970,17 +2014,12 @@ function enableAgentTextareaAutoGrow(form) {
 }
 
 function setAgentFormAvailability(form, available) {
-  form.classList.toggle("agent-disabled", !available);
+  const compose = form.matches(".agent-compose") ? form : form.querySelector("[data-agent-compose]");
+  compose?.classList.toggle("agent-disabled", !available);
   form.querySelector("textarea").disabled = !available;
   form.querySelector('[type="submit"]').disabled = !available;
   if (!available) voiceControllers.get(form)?.abort();
   updateVoiceButtonAvailability(form);
-}
-
-function setOverviewExamplesAvailability(available) {
-  document.querySelectorAll("[data-agent-example]").forEach((button) => {
-    button.disabled = !available;
-  });
 }
 
 function updateVoiceButtonAvailability(form) {
@@ -1991,11 +2030,16 @@ function updateVoiceButtonAvailability(form) {
   const processing = controller?.isProcessing() === true;
   const formUnavailable = form.querySelector("textarea")?.disabled === true;
   const voiceUnavailable = !controller || formUnavailable || !state.agentConfigured || state.voiceConfigured !== true || processing;
-  button.disabled = voiceUnavailable;
+  const supportsTextFallback = button.hasAttribute("data-text-fallback");
+  controller?.setVoiceAvailable(!voiceUnavailable);
+  button.disabled = supportsTextFallback ? processing : voiceUnavailable;
   if (modeToggle) modeToggle.disabled = voiceUnavailable;
-  button.title = state.voiceConfigured === false
+  const voiceHint = state.voiceConfigured === false
     ? "系统语音识别尚未配置"
-    : "按住说话，松开发送";
+    : formUnavailable || !state.agentConfigured
+      ? "助手当前不可用"
+      : "按住说话，松开发送";
+  button.title = supportsTextFallback && voiceUnavailable ? `${voiceHint}；轻点打开文字对话` : voiceHint;
 }
 
 function initializeVoiceRecordingWave() {
@@ -2060,20 +2104,27 @@ function microphoneErrorMessage(error) {
   return error?.message || "无法启动录音，请重试";
 }
 
-function setupVoiceInput(form) {
+function setupVoiceInput(form, options = {}) {
   const button = form.querySelector("[data-voice-input]");
   const textSurface = form.querySelector("[data-voice-text-surface]");
   const modeToggle = form.querySelector("[data-input-mode-toggle]");
   const status = form.querySelector("[data-voice-status]");
   const textarea = form.querySelector("textarea");
   const submitButton = form.querySelector('[type="submit"]');
-  const recordingSupported = Boolean(button && textSurface && modeToggle && status && navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  const compose = form.matches(".agent-compose") ? form : form.querySelector("[data-agent-compose]");
+  const recordingSupported = Boolean(button && textSurface && status && navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   if (!recordingSupported) {
+    if (compose) compose.dataset.inputMode = "text";
     form.dataset.inputMode = "text";
     if (modeToggle) {
       modeToggle.disabled = true;
       modeToggle.setAttribute("aria-label", "当前浏览器不支持网页录音");
       modeToggle.title = "当前浏览器不支持网页录音";
+    }
+    if (button?.hasAttribute("data-text-fallback")) {
+      button.disabled = false;
+      button.title = "当前浏览器不支持网页录音；轻点打开文字对话";
+      button.addEventListener("click", () => options.onButtonTap?.());
     }
     return;
   }
@@ -2091,6 +2142,7 @@ function setupVoiceInput(form) {
   let statusTimer = null;
   let longPressTimer = null;
   let pointerPress = null;
+  let voiceAvailable = true;
 
   function updateStatus(text, { error = false, clearAfter = 0 } = {}) {
     clearTimeout(statusTimer);
@@ -2111,15 +2163,17 @@ function setupVoiceInput(form) {
 
   function setRecordingUi(active) {
     form.classList.toggle("is-recording", active);
+    compose?.classList.toggle("is-recording", active);
     button.setAttribute("aria-pressed", String(active));
     button.setAttribute("aria-label", active ? "松开发送" : "按住说话，松开发送");
     submitButton.disabled = active || processing || textarea.disabled || !state.agentConfigured;
   }
 
   function setInputMode(mode, { focus = false } = {}) {
-    const nextMode = mode === "voice" ? "voice" : "text";
+    const nextMode = options.fixedText ? "text" : mode === "voice" ? "voice" : "text";
     form.dataset.inputMode = nextMode;
-    modeToggle.setAttribute("aria-label", nextMode === "voice" ? "切换到文本输入" : "切换到纯语音输入");
+    if (compose) compose.dataset.inputMode = nextMode;
+    modeToggle?.setAttribute("aria-label", nextMode === "voice" ? "切换到文本输入" : "切换到纯语音输入");
     if (focus && nextMode === "text") {
       textarea.focus({ preventScroll: true });
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -2131,6 +2185,7 @@ function setupVoiceInput(form) {
     longPressTimer = null;
     pointerPress = null;
     form.classList.remove("is-long-press-pending");
+    compose?.classList.remove("is-long-press-pending");
   }
 
   async function finishRecording() {
@@ -2173,6 +2228,7 @@ function setupVoiceInput(form) {
       });
       textarea.value = result.text;
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      options.onTranscribed?.(result.text);
       processing = false;
       button.classList.remove("is-processing");
       updateVoiceButtonAvailability(form);
@@ -2184,6 +2240,7 @@ function setupVoiceInput(form) {
       button.classList.remove("is-processing");
       updateVoiceButtonAvailability(form);
       updateStatus(error.message, { error: true, clearAfter: 4200 });
+      options.onVoiceError?.(error);
       toast(error.message);
     }
   }
@@ -2207,6 +2264,9 @@ function setupVoiceInput(form) {
     isProcessing() {
       return processing;
     },
+    setVoiceAvailable(available) {
+      voiceAvailable = available;
+    },
     switchMode(mode, options) {
       setInputMode(mode, options);
     }
@@ -2214,7 +2274,7 @@ function setupVoiceInput(form) {
   voiceControllers.set(form, controller);
 
   async function beginRecording() {
-    if (button.disabled || controller.isBusy()) return;
+    if (button.disabled || controller.isBusy() || !voiceAvailable) return;
     activeVoiceController?.abort();
     activeVoiceController = controller;
     releaseRequested = false;
@@ -2278,7 +2338,9 @@ function setupVoiceInput(form) {
       stopStream();
       if (activeVoiceController === controller) activeVoiceController = null;
       updateVoiceButtonAvailability(form);
-      updateStatus(microphoneErrorMessage(error), { error: true, clearAfter: 4200 });
+      const message = microphoneErrorMessage(error);
+      updateStatus(message, { error: true, clearAfter: 4200 });
+      options.onVoiceError?.(new Error(message));
     }
   }
 
@@ -2304,6 +2366,10 @@ function setupVoiceInput(form) {
     if (event.button !== 0) return;
     if (button.disabled || controller.isBusy()) return;
     event.preventDefault();
+    if (!voiceAvailable) {
+      options.onButtonTap?.();
+      return;
+    }
     resetPointerPress();
     source.setPointerCapture?.(event.pointerId);
     pointerPress = {
@@ -2320,11 +2386,13 @@ function setupVoiceInput(form) {
       return;
     }
     form.classList.add("is-long-press-pending");
+    compose?.classList.add("is-long-press-pending");
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
       if (!pointerPress) return;
       pointerPress.activated = true;
       form.classList.remove("is-long-press-pending");
+      compose?.classList.remove("is-long-press-pending");
       navigator.vibrate?.(12);
       beginRecording();
     }, VOICE_LONG_PRESS_MS);
@@ -2340,6 +2408,7 @@ function setupVoiceInput(form) {
         longPressTimer = null;
         pointerPress.suppressTap = true;
         form.classList.remove("is-long-press-pending");
+        compose?.classList.remove("is-long-press-pending");
       }
       return;
     }
@@ -2360,6 +2429,7 @@ function setupVoiceInput(form) {
       return;
     }
     if (!suppressTap && source === textSurface) focusTextarea();
+    if (!suppressTap && source === button) options.onButtonTap?.();
   }
 
   function handlePointerCancel(event) {
@@ -2369,44 +2439,60 @@ function setupVoiceInput(form) {
     if (activated) releaseRecording(true);
   }
 
-  textSurface.addEventListener("pointerdown", (event) => handlePointerDown(event, textSurface, { delayed: true }));
-  textSurface.addEventListener("pointermove", handlePointerMove);
-  textSurface.addEventListener("pointerup", handlePointerUp);
-  textSurface.addEventListener("pointercancel", handlePointerCancel);
-  textSurface.addEventListener("contextmenu", (event) => {
-    if (form.classList.contains("is-long-press-pending") || controller.isBusy()) event.preventDefault();
-  });
-  button.addEventListener("pointerdown", (event) => handlePointerDown(event, button));
+  if (options.voiceFromTextSurface !== false) {
+    textSurface.addEventListener("pointerdown", (event) => handlePointerDown(event, textSurface, { delayed: true }));
+    textSurface.addEventListener("pointermove", handlePointerMove);
+    textSurface.addEventListener("pointerup", handlePointerUp);
+    textSurface.addEventListener("pointercancel", handlePointerCancel);
+    textSurface.addEventListener("contextmenu", (event) => {
+      if (form.classList.contains("is-long-press-pending") || controller.isBusy()) event.preventDefault();
+    });
+  }
+  button.addEventListener("pointerdown", (event) => handlePointerDown(event, button, { delayed: options.buttonLongPress === true }));
   button.addEventListener("pointermove", handlePointerMove);
   button.addEventListener("pointerup", handlePointerUp);
   button.addEventListener("pointercancel", handlePointerCancel);
   button.addEventListener("keydown", (event) => {
     if (![" ", "Enter"].includes(event.key) || event.repeat) return;
     event.preventDefault();
+    if (options.buttonLongPress) {
+      options.onButtonTap?.();
+      return;
+    }
     beginRecording();
   });
   button.addEventListener("keyup", (event) => {
     if (![" ", "Enter"].includes(event.key)) return;
     event.preventDefault();
+    if (options.buttonLongPress) return;
     releaseRecording(false);
   });
   button.addEventListener("click", (event) => event.preventDefault());
   button.addEventListener("contextmenu", (event) => event.preventDefault());
-  modeToggle.addEventListener("click", () => {
+  modeToggle?.addEventListener("click", () => {
     if (modeToggle.disabled || controller.isBusy()) return;
     setInputMode(form.dataset.inputMode === "voice" ? "text" : "voice", { focus: form.dataset.inputMode === "voice" });
   });
   button.hidden = false;
-  setInputMode("voice");
+  setInputMode(options.defaultMode || "voice");
   updateVoiceButtonAvailability(form);
 }
 
 initializeVoiceRecordingWave();
 enableEnterToSubmit($("#agentForm"));
-enableEnterToSubmit($("#overviewAgentForm"));
+enableEnterToSubmit($("#quickAgentForm"));
 enableAgentTextareaAutoGrow($("#agentForm"));
+enableAgentTextareaAutoGrow($("#quickAgentForm"));
 setupVoiceInput($("#agentForm"));
-setupVoiceInput($("#overviewAgentForm"));
+setupVoiceInput($("#quickAgentForm"), {
+  buttonLongPress: true,
+  defaultMode: "text",
+  fixedText: true,
+  voiceFromTextSurface: false,
+  onButtonTap: () => openQuickAgent(),
+  onTranscribed: () => openQuickAgent({ focus: false, loadMessages: false }),
+  onVoiceError: () => openQuickAgent({ focus: false })
+});
 
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

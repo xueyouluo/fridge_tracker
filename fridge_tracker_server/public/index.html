@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20260716-2">
+  <link rel="stylesheet" href="/styles.css?v=20260716-3">
 </head>
 <body>
   <header class="topbar">
@@ -85,31 +85,13 @@
             </div>
             <h1>你好，<span id="welcomeUser">admin</span></h1>
             <p id="todayText" class="muted"></p>
-            <div class="welcome-agent">
-              <strong>直接告诉助手你想做什么</strong>
-              <form id="overviewAgentForm" class="welcome-agent-form agent-compose agent-compose-overview" data-input-mode="voice">
-                <div class="agent-input-surface" data-voice-text-surface>
-                  <textarea name="content" maxlength="4000" rows="1" placeholder="发消息或按住说话…" required></textarea>
-                </div>
-                <button class="agent-voice-pad" type="button" data-voice-input aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-4 0h8"/></svg>
-                  <span>按住说话</span>
-                </button>
-                <span class="agent-voice-status" data-voice-status role="status"></span>
-                <button class="agent-send" type="submit" aria-label="发送消息">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
-                </button>
-                <button class="agent-mode-toggle" type="button" data-input-mode-toggle aria-label="切换到文本输入">
-                  <svg class="mode-icon-voice" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4m4-7v10m4-13v16m4-12v8m4-5v2"/></svg>
-                  <svg class="mode-icon-text" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
-                </button>
-              </form>
-              <div class="agent-example-list" aria-label="示例对话">
-                <button type="button" data-agent-example="冰箱里有哪些三天内到期的食材？" disabled><span>⌕</span>冰箱里有哪些三天内到期的食材？</button>
-                <button type="button" data-agent-example="根据冰箱现有食材，今天可以做什么菜？" disabled><span>⌁</span>根据冰箱现有食材，今天可以做什么菜？</button>
-              </div>
-              <div id="overviewAgentResult" class="overview-agent-result hidden" aria-live="polite"></div>
-              <span id="overviewAgentStatus" class="overview-agent-status muted"></span>
+            <div class="overview-agent-shortcuts" aria-label="助手快捷提问">
+              <button type="button" data-quick-agent-prompt="冰箱里有哪些三天内到期的食材？" disabled><span>⌕</span>查询三天内到期</button>
+              <button type="button" data-quick-agent-prompt="根据冰箱现有食材，今天可以做什么菜？" disabled><span>⌁</span>今天吃什么</button>
+              <button type="button" data-quick-agent-prompt="冰箱里有哪些已经过期的食材？" disabled><span>!</span>哪些已经过期</button>
+              <button type="button" data-quick-agent-prompt="根据到期时间，帮我安排这周优先吃哪些食材？" disabled><span>↗</span>这周先吃什么</button>
+              <button type="button" data-quick-agent-prompt="用冰箱里快到期的食材推荐一道菜，并告诉我简单做法。" disabled><span>⌁</span>推荐消耗菜谱</button>
+              <button type="button" data-quick-agent-prompt="我刚买了一些食材，帮我记录到冰箱里。" disabled><span>＋</span>记录刚买食材</button>
             </div>
             <button class="link welcome-manual-add" type="button" data-view-target="foods" data-new-food>手动添加食材</button>
           </article>
@@ -450,6 +432,34 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
           </section>
         </div>
       </section>
+      <form id="quickAgentForm" class="quick-agent hidden" aria-label="快捷食材助手">
+        <section id="quickAgentDialog" class="quick-agent-dialog hidden" role="dialog" aria-modal="false" aria-labelledby="quickAgentTitle">
+          <header class="quick-agent-header">
+            <div><span>快捷对话</span><strong id="quickAgentTitle">食材助手</strong></div>
+            <div class="quick-agent-header-actions">
+              <button id="quickAgentOpenFull" type="button">打开完整助手</button>
+              <button id="quickAgentClose" class="quick-agent-close" type="button" aria-label="关闭快捷对话">×</button>
+            </div>
+          </header>
+          <div id="quickAgentMessages" class="quick-agent-messages" aria-live="polite">
+            <div class="agent-empty"><strong>按住右下角说话</strong><span>也可以在下方输入文字继续对话。</span></div>
+          </div>
+          <span id="quickAgentAvailability" class="quick-agent-availability muted"></span>
+          <div class="agent-compose quick-agent-compose" data-agent-compose data-input-mode="text">
+            <div class="agent-input-surface" data-voice-text-surface>
+              <textarea name="content" maxlength="4000" rows="1" placeholder="继续对话…" required></textarea>
+            </div>
+            <span class="agent-voice-status" data-voice-status role="status"></span>
+            <button class="agent-send" type="submit" aria-label="发送消息">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+            </button>
+          </div>
+        </section>
+        <button id="quickAgentVoice" class="quick-agent-voice" type="button" data-voice-input data-text-fallback aria-label="按住说话，松开发送；轻点打开对话" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-4 0h8"/></svg>
+          <span class="sr-only">按住说话</span>
+        </button>
+      </form>
     </section>
     <div id="voiceRecordingOverlay" class="voice-recording-overlay hidden" aria-hidden="true">
       <div class="voice-recording-panel">
@@ -594,6 +604,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260716-1"></script>
+  <script src="/app.js?v=20260716-3"></script>
 </body>
 </html>

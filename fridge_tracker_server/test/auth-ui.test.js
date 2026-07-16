@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260716-1"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260716-3"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -40,19 +40,20 @@ test("agent textareas submit on Enter while preserving Shift+Enter and IME compo
   assert.match(app, /!textarea\.disabled && !submitButton\.disabled/);
   assert.match(app, /form\.requestSubmit\(\)/);
   assert.match(app, /enableEnterToSubmit\(\$\("#agentForm"\)\)/);
-  assert.match(app, /enableEnterToSubmit\(\$\("#overviewAgentForm"\)\)/);
+  assert.match(app, /enableEnterToSubmit\(\$\("#quickAgentForm"\)\)/);
 });
 
 test("agent composers support text and pure-voice modes with upward cancel", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.equal((html.match(/placeholder="发消息或按住说话…"/g) || []).length, 2);
+  assert.equal((html.match(/placeholder="发消息或按住说话…"/g) || []).length, 1);
+  assert.match(html, /placeholder="继续对话…"/);
   assert.match(html, /class="agent-send" type="submit" aria-label="发送消息"/);
   assert.equal((html.match(/data-voice-input/g) || []).length, 2);
   assert.equal((html.match(/data-voice-text-surface/g) || []).length, 2);
-  assert.equal((html.match(/data-input-mode-toggle/g) || []).length, 2);
-  assert.equal((html.match(/data-input-mode="voice"/g) || []).length, 2);
+  assert.equal((html.match(/data-input-mode-toggle/g) || []).length, 1);
+  assert.equal((html.match(/data-input-mode="voice"/g) || []).length, 1);
   assert.match(html, /aria-label="按住说话，松开发送" aria-pressed="false" hidden disabled/);
   assert.match(html, /id="voiceRecordingOverlay"[\s\S]*松手发送，上移取消[\s\S]*id="voiceRecordingWave"/);
   assert.match(css, /\.agent-compose \{[\s\S]*border-radius: 27px/);
@@ -73,30 +74,41 @@ test("agent composers support text and pure-voice modes with upward cancel", () 
   assert.match(app, /pointerPress\.startY - event\.clientY >= VOICE_CANCEL_DISTANCE_PX/);
   assert.match(app, /setVoiceRecordingCancelState\(controller, cancelling\)/);
   assert.match(app, /form\.dataset\.inputMode === "voice" \? "text" : "voice"/);
-  assert.match(app, /setInputMode\("voice"\)/);
+  assert.match(app, /setInputMode\(options\.defaultMode \|\| "voice"\)/);
   assert.match(app, /正在录音，松开发送/);
   assert.match(app, /\/api\/agent\/transcriptions/);
   assert.match(app, /textarea\.dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\)/);
   assert.match(app, /识别完成，正在发送/);
   assert.doesNotMatch(app, /webkitSpeechRecognition/);
   assert.match(app, /setupVoiceInput\(\$\("#agentForm"\)\)/);
-  assert.match(app, /setupVoiceInput\(\$\("#overviewAgentForm"\)\)/);
+  assert.match(app, /setupVoiceInput\(\$\("#quickAgentForm"\), \{/);
+  assert.match(app, /buttonLongPress: true/);
+  assert.match(app, /voiceFromTextSurface: false/);
 });
 
-test("overview hides remaining quota and offers direct-send example prompts", () => {
+test("overview removes its embedded assistant and exposes a global quick assistant", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.equal((html.match(/data-agent-example=/g) || []).length, 2);
-  assert.match(html, />冰箱里有哪些三天内到期的食材？<\/button>/);
-  assert.match(html, />根据冰箱现有食材，今天可以做什么菜？<\/button>/);
-  assert.doesNotMatch(html, /data-agent-example="帮我添加一盒牛奶/);
-  assert.doesNotMatch(html, /data-agent-example="把牛奶的数量改成 2 盒/);
-  assert.doesNotMatch(html, /data-agent-example="删除已经吃完的牛奶/);
-  assert.match(css, /\.agent-example-list \{ display: flex; flex-wrap: wrap;/);
-  assert.match(css, /max-width: 100%; white-space: normal; text-align: left;/);
-  assert.match(app, /example\.dataset\.agentExample/);
-  assert.match(app, /setOverviewExamplesAvailability\(false\)/);
+  assert.doesNotMatch(html, /id="overviewAgentForm"|id="overviewAgentResult"|data-agent-example=/);
+  assert.match(html, /class="link welcome-manual-add"/);
+  assert.match(html, /data-quick-agent-prompt="冰箱里有哪些三天内到期的食材？"/);
+  assert.match(html, /data-quick-agent-prompt="根据冰箱现有食材，今天可以做什么菜？"/);
+  assert.equal((html.match(/data-quick-agent-prompt=/g) || []).length, 6);
+  assert.match(html, />哪些已经过期<\/button>/);
+  assert.match(html, />这周先吃什么<\/button>/);
+  assert.match(html, />推荐消耗菜谱<\/button>/);
+  assert.match(html, />记录刚买食材<\/button>/);
+  assert.match(css, /\.overview-agent-shortcuts \{ display: flex; flex-wrap: wrap;/);
+  assert.match(app, /shortcut\.dataset\.quickAgentPrompt/);
+  assert.match(app, /form\.requestSubmit\(\)/);
+  assert.match(html, /id="quickAgentForm"[\s\S]*id="quickAgentDialog"[\s\S]*id="quickAgentVoice"/);
+  assert.match(html, /data-text-fallback/);
+  assert.match(html, />打开完整助手<\/button>/);
+  assert.match(css, /\.quick-agent \{[\s\S]*position: fixed; right: 24px; bottom: 24px;/);
+  assert.match(app, /\$\("#quickAgentForm"\)\.classList\.toggle\("hidden", !state\.user \|\| target === "agent" \|\| target === "display"\)/);
+  assert.match(app, /if \(target === "agent" \|\| target === "display"\) \{[\s\S]*closeQuickAgent\(\)/);
+  assert.match(app, /\$\("#quickAgentOpenFull"\)\.addEventListener\("click", \(\) => setView\("agent"\)\)/);
   assert.doesNotMatch(app, /系统额度剩余/);
 });
 
@@ -111,6 +123,8 @@ test("mobile agent view keeps chat full-height and collapses the conversation li
   assert.match(css, /\.agent-messages \{ min-height: 0; max-height: none; padding: 14px; \}/);
   assert.match(app, /document\.body\.classList\.toggle\("agent-view-active", target === "agent"\)/);
   assert.match(app, /function setConversationListOpen\(open\)/);
+  assert.match(css, /bottom: calc\(88px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /\.quick-agent-dialog \{[\s\S]*max-height: min\(58dvh, 440px\)/);
 });
 
 test("phone and tablet presentation mode offers rich status, fullscreen and wake lock", () => {
@@ -170,7 +184,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260716-2/);
+  assert.match(html, /styles\.css\?v=20260716-3/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -181,15 +195,26 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   assert.match(server, /agentService\.deleteConversation\(user\.id/);
 });
 
-test("overview quick agent only reuses the latest conversation for one hour", () => {
+test("global quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260716-1/);
-  assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
-  assert.match(app, /async function ensureOverviewConversation\(\)/);
+  assert.match(html, /app\.js\?v=20260716-3/);
+  assert.match(app, /const QUICK_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
+  assert.match(app, /async function ensureQuickConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
-  assert.match(app, /Date\.now\(\) - updatedAt <= OVERVIEW_CONVERSATION_REUSE_MS/);
-  assert.match(app, /\$\("#overviewAgentForm"\)[\s\S]*await ensureOverviewConversation\(\)/);
+  assert.match(app, /Date\.now\(\) - updatedAt <= QUICK_CONVERSATION_REUSE_MS/);
+  assert.match(app, /\$\("#quickAgentForm"\)[\s\S]*await ensureQuickConversation\(\)/);
+  assert.match(app, /openQuickAgent\(\{ focus: false, loadMessages: false \}\)/);
+  assert.match(app, /loadQuickAgentMessages\(\)/);
+});
+
+test("quick assistant keeps text fallback and preserves failed voice or Agent input", () => {
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  assert.match(app, /button\.disabled = supportsTextFallback \? processing : voiceUnavailable/);
+  assert.match(app, /options\.onTranscribed\?\.\(result\.text\)/);
+  assert.match(app, /onVoiceError: \(\) => openQuickAgent/);
+  assert.match(app, /textarea\.value = content;[\s\S]*发送失败，输入内容已保留/);
+  assert.match(app, /button\.title = supportsTextFallback && voiceUnavailable/);
 });
 
 test("household UI supports invitations, member controls and owner-only device pairing", () => {
@@ -264,10 +289,9 @@ test("user page has a dedicated narrow mobile layout", () => {
   assert.match(css, /\.mcp-config pre \{[\s\S]*max-width: 100%;[\s\S]*overscroll-behavior-inline: contain;/);
 });
 
-test("agent markdown tables stay inside the overview card and scroll internally", () => {
+test("agent markdown tables stay inside assistant surfaces and scroll internally", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
-  assert.match(css, /\.welcome, \.welcome-agent, \.overview-agent-result \{ min-width: 0; \}/);
-  assert.match(css, /\.overview-agent-result \.agent-message \{ width: 100%; max-width: 100%; \}/);
+  assert.match(css, /\.quick-agent-messages \.agent-message \{ max-width: 92%; \}/);
   assert.match(css, /\.agent-markdown \{ min-width: 0; max-width: 100%; overflow-wrap: anywhere; \}/);
   assert.match(css, /\.markdown-table-wrap \{ width: 100%; min-width: 0; max-width: 100%;[\s\S]*overflow-x: auto; \}/);
 });
@@ -279,7 +303,7 @@ test("pending actions show details before execution and block duplicate clicks",
   assert.match(app, /card\?\.dataset\.processing === "true"/);
   assert.match(app, /正在执行并生成回复/);
   assert.match(app, /button\.disabled = true/);
-  assert.match(app, /const actionContainer = event\.currentTarget/);
-  assert.match(app, /if \(actionContainer\.id === "overviewAgentResult"\)/);
-  assert.doesNotMatch(app, /if \(event\.currentTarget\.id === "overviewAgentResult"\)/);
+  assert.match(app, /\$\("#quickAgentMessages"\)\.addEventListener\("click", handleAgentActionClick\)/);
+  assert.match(app, /Promise\.all\(\[loadAgentMessages\(\), loadQuickAgentMessages\(\), loadFoods\(\)\]\)/);
+  assert.doesNotMatch(app, /overviewAgentResult/);
 });
