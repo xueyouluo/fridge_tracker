@@ -21,6 +21,7 @@ const QUICK_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
 const VOICE_CANCEL_DISTANCE_PX = 72;
+const DISPLAY_REFRESH_MS = 30 * 1000;
 const views = new Set(["overview", "foods", "devices", "display", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
@@ -183,8 +184,8 @@ function setView(view, options = {}) {
   state.view = target;
   document.body.classList.toggle("agent-view-active", target === "agent");
   document.body.classList.toggle("presentation-view-active", target === "display");
-  $("#quickAgentForm").classList.toggle("hidden", !state.user || target === "agent" || target === "display");
-  if (target === "agent" || target === "display") {
+  $("#quickAgentForm").classList.toggle("hidden", !state.user || target === "agent");
+  if (target === "agent") {
     closeQuickAgent();
     voiceControllers.get($("#quickAgentForm"))?.abort();
   }
@@ -657,7 +658,10 @@ function renderPresentation() {
     ? state.foods.slice(0, 6).map((item) => `<article class="ambient-food ${item.status}">
         <span class="ambient-food-glyph" aria-hidden="true">${categoryGlyph(item.category)}</span>
         <span class="ambient-food-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category)}${item.quantityText ? ` · ${escapeHtml(item.quantityText)}` : ""}</span></span>
-        <span class="ambient-food-status">${escapeHtml(compactStatusText(item))}</span>
+        <span class="ambient-food-actions">
+          <span class="ambient-food-status">${escapeHtml(compactStatusText(item))}</span>
+          ${item.status === "expired" || item.status === "expiring" ? `<button type="button" class="ambient-food-handle" data-display-handle="${item.id}">快速处理</button>` : ""}
+        </span>
       </article>`).join("")
     : `<div class="ambient-food-empty">冰箱里还没有记录<br>添加食材后会按紧急程度展示</div>`;
 
@@ -715,10 +719,18 @@ function startPresentation() {
   window.clearInterval(displayClockTimer);
   window.clearInterval(displayRefreshTimer);
   displayClockTimer = window.setInterval(renderPresentationClock, 30000);
-  displayRefreshTimer = window.setInterval(() => {
-    loadFoods().catch(() => updateWakeStatus("数据刷新失败"));
-  }, 5 * 60 * 1000);
+  displayRefreshTimer = window.setInterval(refreshPresentationFoods, DISPLAY_REFRESH_MS);
+  refreshPresentationFoods();
   requestDisplayWakeLock();
+}
+
+async function refreshPresentationFoods() {
+  if (state.view !== "display" || !state.user) return;
+  try {
+    await loadFoods();
+  } catch {
+    updateWakeStatus("数据刷新失败");
+  }
 }
 
 function stopPresentation() {
@@ -1518,6 +1530,29 @@ $("#foods").addEventListener("click", async (event) => {
   }
 });
 
+$("#displayFoods").addEventListener("click", async (event) => {
+  const handle = event.target.closest("[data-display-handle]");
+  if (!handle) return;
+
+  const item = state.foods.find((food) => food.id === Number(handle.dataset.displayHandle));
+  const confirmed = await confirmDialog({
+    eyebrow: "快速处理",
+    title: item ? `确认已处理“${item.name}”？` : "确认已处理该食材？",
+    body: "确认后将从当前库存移除，墨水屏下次刷新时也会同步更新。",
+    confirmText: "确认处理",
+    tone: "danger"
+  });
+  if (!confirmed) return;
+
+  try {
+    await api(`/api/foods/${handle.dataset.displayHandle}`, { method: "DELETE" });
+    await loadFoods();
+    toast(item ? `${item.name} 已处理` : "食材已处理");
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
 $("#foods").addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-food-select]");
   if (!checkbox) return;
@@ -1860,6 +1895,12 @@ $("#agentMessages").addEventListener("click", () => setConversationListOpen(fals
 window.addEventListener("resize", () => {
   if (!window.matchMedia("(max-width: 640px)").matches) setConversationListOpen(false);
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || state.view !== "display") return;
+  refreshPresentationFoods();
+  requestDisplayWakeLock();
+});
+window.addEventListener("online", () => refreshPresentationFoods());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setConversationListOpen(false);

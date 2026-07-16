@@ -1230,6 +1230,10 @@ body.presentation-view-active {
 body.presentation-view-active .topbar { display: none; }
 body.presentation-view-active .shell { max-width: none; margin: 0; padding: 0; }
 body.presentation-view-active #workspace { padding: 0; }
+body.presentation-view-active .quick-agent {
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+}
 .presentation-view.active { min-height: 100dvh; }
 .ambient-display {
   --ambient-ink: #17362b;
@@ -1363,9 +1367,23 @@ body.presentation-view-active #workspace { padding: 0; }
 .ambient-food-copy strong, .ambient-food-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ambient-food-copy strong { font-size: 15px; }
 .ambient-food-copy span { margin-top: 4px; color: #64766f; font-size: 10px; }
+.ambient-food-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 .ambient-food-status { color: var(--ambient-green); font-size: 11px; font-weight: 820; white-space: nowrap; }
 .ambient-food.expired .ambient-food-status { color: var(--ambient-red); }
 .ambient-food.expiring .ambient-food-status { color: #9c6612; }
+.ambient-food-handle {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(36,95,69,.16);
+  border-radius: 999px;
+  color: var(--ambient-green);
+  background: rgba(255,255,255,.7);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ambient-food-handle:hover { border-color: rgba(36,95,69,.34); background: #fff; }
+.ambient-food-handle:focus-visible { outline: 3px solid rgba(36,95,69,.2); outline-offset: 2px; }
 .ambient-food-empty { grid-column: 1 / -1; min-height: 150px; display: grid; place-items: center; border: 1px dashed rgba(36,95,69,.2); border-radius: 18px; color: #71847c; text-align: center; }
 .ambient-details { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(190px, .8fr); gap: clamp(12px, 1.5vw, 20px); }
 .ambient-details > section { min-width: 0; padding: 17px 20px; border-radius: 22px; background: rgba(255,253,246,.78); }
@@ -1374,10 +1392,10 @@ body.presentation-view-active #workspace { padding: 0; }
 .ambient-categories { display: flex; flex-wrap: wrap; gap: 7px; }
 .ambient-category { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 9px; border-radius: 999px; color: #4f685e; background: #e8eee4; font-size: 11px; font-weight: 700; }
 .ambient-category strong { color: var(--ambient-ink); }
-.ambient-next-card { display: flex; flex-direction: column; justify-content: center; background: var(--ambient-green) !important; color: #f8f5e9; }
-.ambient-next-card span { color: #c9dfd1; font-size: 10px; font-weight: 780; letter-spacing: .1em; }
+.ambient-next-card { display: flex; flex-direction: column; justify-content: center; background: #f3dca9 !important; color: #513b17; }
+.ambient-next-card span { color: #87672d; font-size: 10px; font-weight: 780; letter-spacing: .1em; }
 .ambient-next-card strong { margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 21px; }
-.ambient-next-card p { margin: 6px 0 0; color: #d7e5dc; font-size: 11px; line-height: 1.45; }
+.ambient-next-card p { margin: 6px 0 0; color: #735727; font-size: 11px; line-height: 1.45; }
 .ambient-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: #637a70; font-size: 11px; }
 .ambient-footer span { display: flex; align-items: center; gap: 7px; font-weight: 700; }
 .ambient-footer i { width: 7px; height: 7px; border-radius: 50%; background: #4da271; box-shadow: 0 0 0 4px rgba(77,162,113,.14); }
@@ -1425,6 +1443,8 @@ body.presentation-view-active #workspace { padding: 0; }
   .ambient-food-glyph { width: 38px; height: 38px; border-radius: 11px; font-size: 20px; }
   .ambient-food-copy strong { font-size: 14px; }
   .ambient-food-copy span { margin-top: 2px; }
+  .ambient-food-actions { gap: 3px; }
+  .ambient-food-handle { min-height: 22px; padding: 2px 7px; font-size: 9px; }
   .ambient-food:nth-child(n+5) { display: none; }
   .ambient-details { grid-template-columns: 1fr; gap: 10px; }
   .ambient-details > section { padding: 16px 18px; border-radius: 19px; }
@@ -1484,6 +1504,8 @@ body.presentation-view-active #workspace { padding: 0; }
   .ambient-food-glyph { width: 34px; height: 34px; border-radius: 9px; font-size: 18px; }
   .ambient-food-copy strong { font-size: 12px; }
   .ambient-food-copy span, .ambient-food-status { font-size: 9px; }
+  .ambient-food-actions { gap: 2px; }
+  .ambient-food-handle { min-height: 19px; padding: 1px 6px; font-size: 8px; }
   .ambient-details { grid-template-columns: minmax(0, 1.3fr) minmax(150px, .75fr); gap: 8px; }
   .ambient-details > section { padding: 10px 13px; border-radius: 15px; }
   .ambient-details .ambient-section-head { margin-bottom: 6px; }

@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260716-3"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260716-6"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -106,8 +106,8 @@ test("overview removes its embedded assistant and exposes a global quick assista
   assert.match(html, /data-text-fallback/);
   assert.match(html, />打开完整助手<\/button>/);
   assert.match(css, /\.quick-agent \{[\s\S]*position: fixed; right: 24px; bottom: 24px;/);
-  assert.match(app, /\$\("#quickAgentForm"\)\.classList\.toggle\("hidden", !state\.user \|\| target === "agent" \|\| target === "display"\)/);
-  assert.match(app, /if \(target === "agent" \|\| target === "display"\) \{[\s\S]*closeQuickAgent\(\)/);
+  assert.match(app, /\$\("#quickAgentForm"\)\.classList\.toggle\("hidden", !state\.user \|\| target === "agent"\)/);
+  assert.match(app, /if \(target === "agent"\) \{[\s\S]*closeQuickAgent\(\)/);
   assert.match(app, /\$\("#quickAgentOpenFull"\)\.addEventListener\("click", \(\) => setView\("agent"\)\)/);
   assert.doesNotMatch(app, /系统额度剩余/);
 });
@@ -140,14 +140,22 @@ test("phone and tablet presentation mode offers rich status, fullscreen and wake
   assert.match(html, /id="displayFoods"/);
   assert.match(html, /id="displayFreshnessBar"/);
   assert.match(css, /body\.presentation-view-active \.topbar \{ display: none; \}/);
+  assert.match(css, /body\.presentation-view-active \.quick-agent \{[\s\S]*bottom: max\(20px, env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /\.ambient-grid \{[\s\S]*grid-template-columns: minmax\(280px, \.88fr\) minmax\(430px, 1\.45fr\)/);
   assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.ambient-food-list \{ grid-template-columns: 1fr; \}/);
   assert.match(app, /const views = new Set\(\["overview", "foods", "devices", "display", "agent", "users"\]\)/);
   assert.match(app, /navigator\.wakeLock\.request\("screen"\)/);
   assert.match(app, /document\.documentElement\.requestFullscreen/);
   assert.match(app, /button\.classList\.toggle\("hidden", !supported\)/);
-  assert.match(app, /displayRefreshTimer = window\.setInterval/);
+  assert.match(app, /const DISPLAY_REFRESH_MS = 30 \* 1000;/);
+  assert.match(app, /displayRefreshTimer = window\.setInterval\(refreshPresentationFoods, DISPLAY_REFRESH_MS\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange",[\s\S]*refreshPresentationFoods\(\)/);
+  assert.match(css, /\.ambient-next-card \{[\s\S]*background: #f3dca9 !important;[\s\S]*color: #513b17;/);
   assert.match(app, /document\.body\.classList\.toggle\("presentation-view-active", target === "display"\)/);
+  assert.match(app, /data-display-handle="\$\{item\.id\}">快速处理<\/button>/);
+  assert.match(app, /title: item \? `确认已处理“\$\{item\.name\}”？`/);
+  assert.match(app, /await api\(`\/api\/foods\/\$\{handle\.dataset\.displayHandle\}`,[\s\S]*method: "DELETE"/);
+  assert.match(css, /\.ambient-food-handle \{[\s\S]*min-height: 24px;/);
 });
 
 test("food management uses grouped compact rows with expandable and batch actions", () => {
@@ -184,7 +192,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260716-3/);
+  assert.match(html, /styles\.css\?v=20260716-6/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -198,7 +206,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("global quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260716-3/);
+  assert.match(html, /app\.js\?v=20260716-6/);
   assert.match(app, /const QUICK_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureQuickConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
