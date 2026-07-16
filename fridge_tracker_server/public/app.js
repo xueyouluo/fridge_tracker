@@ -21,7 +21,7 @@ const OVERVIEW_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
 const VOICE_CANCEL_DISTANCE_PX = 72;
-const views = new Set(["overview", "foods", "devices", "agent", "users"]);
+const views = new Set(["overview", "foods", "devices", "display", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
 const message = $("#message");
@@ -68,6 +68,9 @@ let foodEditorBaseline = "";
 let expiryMode = "direct";
 let activeCalendarTarget = null;
 let calendarCursor = new Date();
+let displayClockTimer = null;
+let displayRefreshTimer = null;
+let displayWakeLock = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -175,10 +178,11 @@ function confirmDialog({
 }
 
 function setView(view, options = {}) {
-  const normalized = view === "display" ? "devices" : view;
-  const target = views.has(normalized) ? normalized : "overview";
+  const target = views.has(view) ? view : "overview";
+  const previousView = state.view;
   state.view = target;
   document.body.classList.toggle("agent-view-active", target === "agent");
+  document.body.classList.toggle("presentation-view-active", target === "display");
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.viewPanel === target);
   });
@@ -190,8 +194,10 @@ function setView(view, options = {}) {
   });
   if (options.updateHash !== false) history.replaceState(null, "", `${location.pathname}${location.search}#${target}`);
   if (target === "devices") refreshPreview();
+  if (target === "display") startPresentation();
+  else if (previousView === "display") stopPresentation();
   if (target === "agent") loadAgent().catch((error) => toast(error.message));
-  if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
+  if (options.scroll !== false) window.scrollTo({ top: 0, behavior: target === "display" ? "auto" : "smooth" });
 }
 
 function dateKeyFromDate(date) {
@@ -591,6 +597,7 @@ async function loadFoods() {
   $("#overviewFoods").innerHTML = result.items.length
     ? result.items.slice(0, 4).map(renderPriorityFood).join("")
     : `<p class="muted">添加食材后，这里会优先展示即将到期的内容。</p>`;
+  if (state.view === "display") renderPresentation();
 }
 
 function renderMetrics() {
@@ -599,6 +606,123 @@ function renderMetrics() {
   $("#totalCount").textContent = state.foods.length;
   $("#expiredCount").textContent = expired;
   $("#expiringCount").textContent = expiring;
+}
+
+function categoryGlyph(category) {
+  return CATEGORY_OPTIONS.find(([label]) => label === category)?.[1] || "📦";
+}
+
+function renderPresentationClock() {
+  const now = new Date();
+  $("#displayTime").textContent = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  $("#displayDate").textContent = now.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
+}
+
+function renderPresentation() {
+  const total = state.foods.length;
+  const expired = state.foods.filter((food) => food.status === "expired").length;
+  const expiring = state.foods.filter((food) => food.status === "expiring").length;
+  const fresh = total - expired - expiring;
+  const urgent = expired + expiring;
+  const freshness = total ? Math.round((fresh / total) * 100) : 100;
+  const headline = expired
+    ? `有 ${expired} 项食材需要尽快处理`
+    : expiring
+      ? `有 ${expiring} 项食材即将到期`
+      : total
+        ? "今天的冰箱状态很好"
+        : "从添加第一项食材开始";
+  const summary = urgent
+    ? `优先查看下面的提醒，合理安排今天的餐食，减少食材浪费。`
+    : total
+      ? "当前没有临期提醒，可以放心按计划享用。"
+      : "记录食材后，这里会自动整理到期顺序和库存构成。";
+
+  $("#displayHouseholdName").textContent = state.household?.household?.name || "家庭冰箱";
+  $("#displayHeadline").textContent = headline;
+  $("#displaySummary").textContent = summary;
+  $("#displayTotalCount").textContent = total;
+  $("#displayExpiredCount").textContent = expired;
+  $("#displayExpiringCount").textContent = expiring;
+  $("#displayFreshnessText").textContent = total ? `${freshness}% 状态良好` : "等待记录";
+  $("#displayFreshnessBar").style.width = `${freshness}%`;
+  $("#displayUpdatedAt").textContent = `${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 更新`;
+
+  $("#displayFoods").innerHTML = state.foods.length
+    ? state.foods.slice(0, 6).map((item) => `<article class="ambient-food ${item.status}">
+        <span class="ambient-food-glyph" aria-hidden="true">${categoryGlyph(item.category)}</span>
+        <span class="ambient-food-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category)}${item.quantityText ? ` · ${escapeHtml(item.quantityText)}` : ""}</span></span>
+        <span class="ambient-food-status">${escapeHtml(compactStatusText(item))}</span>
+      </article>`).join("")
+    : `<div class="ambient-food-empty">冰箱里还没有记录<br>添加食材后会按紧急程度展示</div>`;
+
+  const categories = new Map();
+  state.foods.forEach((item) => categories.set(item.category, (categories.get(item.category) || 0) + 1));
+  $("#displayCategories").innerHTML = categories.size
+    ? [...categories.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-CN"))
+      .slice(0, 7)
+      .map(([category, count]) => `<span class="ambient-category"><span aria-hidden="true">${categoryGlyph(category)}</span>${escapeHtml(category)} <strong>${count}</strong></span>`)
+      .join("")
+    : `<span class="ambient-category">暂无库存分类</span>`;
+
+  const next = state.foods[0];
+  $("#displayNextFood").textContent = next?.name || "暂无食材";
+  $("#displayNextFoodMeta").textContent = next
+    ? `${next.category}${next.quantityText ? ` · ${next.quantityText}` : ""} · ${statusText(next)}`
+    : "添加食材后会在这里显示提醒。";
+}
+
+function updateWakeStatus(text, active = false) {
+  $("#displayWakeStatus").textContent = text;
+  $("#displayWakeStatus").classList.toggle("active", active);
+}
+
+function syncFullscreenButton() {
+  const button = $("#displayFullscreen");
+  const supported = typeof document.documentElement.requestFullscreen === "function";
+  button.classList.toggle("hidden", !supported);
+  button.textContent = document.fullscreenElement ? "退出全屏" : "进入全屏";
+}
+
+async function requestDisplayWakeLock() {
+  if (!("wakeLock" in navigator)) {
+    updateWakeStatus("浏览器未提供常亮");
+    return;
+  }
+  if (displayWakeLock && !displayWakeLock.released) return;
+  try {
+    displayWakeLock = await navigator.wakeLock.request("screen");
+    updateWakeStatus("屏幕已保持常亮", true);
+    displayWakeLock.addEventListener("release", () => {
+      displayWakeLock = null;
+      if (state.view === "display") updateWakeStatus("常亮已暂停");
+    }, { once: true });
+  } catch {
+    updateWakeStatus("请在系统中保持常亮");
+  }
+}
+
+function startPresentation() {
+  renderPresentationClock();
+  renderPresentation();
+  syncFullscreenButton();
+  window.clearInterval(displayClockTimer);
+  window.clearInterval(displayRefreshTimer);
+  displayClockTimer = window.setInterval(renderPresentationClock, 30000);
+  displayRefreshTimer = window.setInterval(() => {
+    loadFoods().catch(() => updateWakeStatus("数据刷新失败"));
+  }, 5 * 60 * 1000);
+  requestDisplayWakeLock();
+}
+
+function stopPresentation() {
+  window.clearInterval(displayClockTimer);
+  window.clearInterval(displayRefreshTimer);
+  displayClockTimer = null;
+  displayRefreshTimer = null;
+  if (displayWakeLock && !displayWakeLock.released) displayWakeLock.release().catch(() => {});
+  displayWakeLock = null;
 }
 
 function statusText(item) {
@@ -1157,6 +1281,12 @@ function formPayload(form) {
 }
 
 document.addEventListener("click", (event) => {
+  const fullscreen = event.target.closest("#displayFullscreen");
+  if (fullscreen) {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else document.documentElement.requestFullscreen?.().catch(() => toast("当前浏览器无法进入全屏"));
+    return;
+  }
   const newFood = event.target.closest("[data-new-food]");
   if (newFood) {
     openFoodEditor(null, newFood);
@@ -1164,10 +1294,19 @@ document.addEventListener("click", (event) => {
   }
   const link = event.target.closest("[data-view-target]");
   if (!link) return;
+  if (link.dataset.displayExit !== undefined && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   setView(link.dataset.viewTarget);
   if (link.dataset.deviceSection === "preview") {
     window.requestAnimationFrame(() => $("#devicePreviewSection").scrollIntoView({ behavior: "smooth", block: "start" }));
   }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  syncFullscreenButton();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (state.view === "display" && document.visibilityState === "visible") requestDisplayWakeLock();
 });
 
 window.addEventListener("hashchange", () => {

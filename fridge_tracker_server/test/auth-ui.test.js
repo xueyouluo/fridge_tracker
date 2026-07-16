@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260715-2"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260716-1"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -113,6 +113,29 @@ test("mobile agent view keeps chat full-height and collapses the conversation li
   assert.match(app, /function setConversationListOpen\(open\)/);
 });
 
+test("phone and tablet presentation mode offers rich status, fullscreen and wake lock", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+
+  assert.equal((html.match(/data-start-display/g) || []).length, 2);
+  assert.match(html, /class="welcome-head"[\s\S]*data-start-display>全屏显示<\/button>/);
+  assert.doesNotMatch(html, />开始展示<\/button>/);
+  assert.match(html, /data-view-panel="display" aria-label="家庭信息展示模式"/);
+  assert.match(html, /id="displayFullscreen"/);
+  assert.match(html, /id="displayFoods"/);
+  assert.match(html, /id="displayFreshnessBar"/);
+  assert.match(css, /body\.presentation-view-active \.topbar \{ display: none; \}/);
+  assert.match(css, /\.ambient-grid \{[\s\S]*grid-template-columns: minmax\(280px, \.88fr\) minmax\(430px, 1\.45fr\)/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.ambient-food-list \{ grid-template-columns: 1fr; \}/);
+  assert.match(app, /const views = new Set\(\["overview", "foods", "devices", "display", "agent", "users"\]\)/);
+  assert.match(app, /navigator\.wakeLock\.request\("screen"\)/);
+  assert.match(app, /document\.documentElement\.requestFullscreen/);
+  assert.match(app, /button\.classList\.toggle\("hidden", !supported\)/);
+  assert.match(app, /displayRefreshTimer = window\.setInterval/);
+  assert.match(app, /document\.body\.classList\.toggle\("presentation-view-active", target === "display"\)/);
+});
+
 test("food management uses grouped compact rows with expandable and batch actions", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
@@ -147,7 +170,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260715-2/);
+  assert.match(html, /styles\.css\?v=20260716-2/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -161,7 +184,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("overview quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260715-2/);
+  assert.match(html, /app\.js\?v=20260716-1/);
   assert.match(app, /const OVERVIEW_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureOverviewConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);

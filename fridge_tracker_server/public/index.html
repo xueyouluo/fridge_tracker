@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20260715-2">
+  <link rel="stylesheet" href="/styles.css?v=20260716-2">
 </head>
 <body>
   <header class="topbar">
@@ -79,7 +79,10 @@
       <section class="view active" data-view-panel="overview" aria-label="概览">
         <div class="bento overview-grid">
           <article class="tile welcome">
-            <p class="eyebrow">今日冰箱状态</p>
+            <div class="welcome-head">
+              <p class="eyebrow">今日冰箱状态</p>
+              <button class="display-launch welcome-display-launch" type="button" data-view-target="display" data-start-display>全屏显示</button>
+            </div>
             <h1>你好，<span id="welcomeUser">admin</span></h1>
             <p id="todayText" class="muted"></p>
             <div class="welcome-agent">
@@ -125,9 +128,71 @@
               <div><p class="eyebrow">电子纸同步</p><h2>墨水屏</h2></div>
               <button class="link" type="button" data-view-target="devices" data-device-section="preview">查看画面</button>
             </div>
-            <p class="screen-copy">显示最需处理的 9 项，设备按设定周期获取最新画面。</p>
+            <p class="screen-copy">没有墨水屏也可以直接用手机或平板常亮展示，保留纸感并呈现更丰富的鲜度信息。</p>
             <div id="overviewDevice" class="sync-state"></div>
           </article>
+        </div>
+      </section>
+
+      <section class="view presentation-view" data-view-panel="display" aria-label="家庭信息展示模式">
+        <div class="ambient-display">
+          <header class="ambient-header">
+            <div class="ambient-brand">
+              <span class="ambient-brand-mark">鲜</span>
+              <span><strong>鲜知贴</strong><small id="displayHouseholdName">家庭冰箱</small></span>
+            </div>
+            <div class="ambient-clock" aria-live="off">
+              <strong id="displayTime">--:--</strong>
+              <span id="displayDate">正在读取日期</span>
+            </div>
+            <div class="ambient-controls">
+              <span id="displayWakeStatus" class="ambient-wake-status">常亮准备中</span>
+              <button id="displayFullscreen" type="button">进入全屏</button>
+              <button type="button" data-view-target="overview" data-display-exit>退出展示</button>
+            </div>
+          </header>
+
+          <main class="ambient-grid">
+            <section class="ambient-hero">
+              <p class="ambient-kicker">今日鲜度简报</p>
+              <h1 id="displayHeadline">冰箱状态一目了然</h1>
+              <p id="displaySummary">正在整理今天的食材状态。</p>
+              <div class="ambient-metrics">
+                <article><span>全部食材</span><strong id="displayTotalCount">0</strong><small>项</small></article>
+                <article class="expired"><span>已经过期</span><strong id="displayExpiredCount">0</strong><small>项</small></article>
+                <article class="expiring"><span>三天内</span><strong id="displayExpiringCount">0</strong><small>项</small></article>
+              </div>
+              <div class="ambient-freshness">
+                <div><span>整体新鲜度</span><strong id="displayFreshnessText">--</strong></div>
+                <div class="ambient-freshness-track" aria-hidden="true"><span id="displayFreshnessBar"></span></div>
+              </div>
+            </section>
+
+            <section class="ambient-priority">
+              <div class="ambient-section-head">
+                <div><p>优先处理</p><h2>近期到期</h2></div>
+                <span id="displayUpdatedAt">刚刚更新</span>
+              </div>
+              <div id="displayFoods" class="ambient-food-list"></div>
+            </section>
+
+            <aside class="ambient-details">
+              <section>
+                <div class="ambient-section-head"><div><p>库存构成</p><h2>冰箱里有什么</h2></div></div>
+                <div id="displayCategories" class="ambient-categories"></div>
+              </section>
+              <section class="ambient-next-card">
+                <span>下一项提醒</span>
+                <strong id="displayNextFood">暂无食材</strong>
+                <p id="displayNextFoodMeta">添加食材后会在这里显示提醒。</p>
+              </section>
+            </aside>
+          </main>
+
+          <footer class="ambient-footer">
+            <span><i></i>家庭食材状态会自动更新</span>
+            <small>轻触右上角可全屏展示</small>
+          </footer>
         </div>
       </section>
 
@@ -216,6 +281,7 @@
                 </select>
               </label>
               <button id="refreshPreview" class="quiet" type="button">刷新预览</button>
+              <button class="display-launch" type="button" data-view-target="display" data-start-display>全屏显示</button>
             </div>
           </div>
           <div class="display-layout">
@@ -528,6 +594,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260715-2"></script>
+  <script src="/app.js?v=20260716-1"></script>
 </body>
 </html>
