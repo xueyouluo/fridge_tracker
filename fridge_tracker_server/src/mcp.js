@@ -36,9 +36,9 @@ function createMcpServer(foodService, user, resolveHouseholdId = (userId) => use
   const handlers = {
     list_foods: (filters) => foodService.searchFoodItems(householdId, filters),
     get_foods: ({ ids }) => ({ items: foodService.getFoodItems(householdId, ids) }),
-    create_foods: ({ items }) => ({ status: "executed", results: foodService.createFoodItems(householdId, items) }),
-    update_foods: ({ items }) => ({ status: "executed", results: foodService.updateFoodItems(householdId, items) }),
-    delete_foods: ({ ids }) => ({ status: "executed", results: foodService.deleteFoodItems(householdId, ids) })
+    create_foods: ({ items }) => ({ status: "executed", results: foodService.createFoodItems(householdId, items, { actorUserId: user.id, source: "mcp" }) }),
+    update_foods: ({ items }) => ({ status: "executed", results: foodService.updateFoodItems(householdId, items, { actorUserId: user.id, source: "mcp" }) }),
+    delete_foods: ({ ids }) => ({ status: "executed", results: foodService.deleteFoodItems(householdId, ids, { actorUserId: user.id, source: "mcp" }) })
   };
   toolSpecs.forEach(({ name, description, inputSchema, annotations }) => {
     server.registerTool(name, { description, inputSchema, annotations }, run(handlers[name]));

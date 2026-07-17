@@ -162,8 +162,8 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
     const householdId = householdIdFor(userId);
     if (name === "list_foods") return foodService.searchFoodItems(householdId, args);
     if (name === "get_foods") return { items: foodService.getFoodItems(householdId, args.ids) };
-    if (name === "create_foods") return { status: "executed", results: foodService.createFoodItems(householdId, args.items) };
-    if (name === "update_foods") return { status: "executed", results: foodService.updateFoodItems(householdId, args.items) };
+    if (name === "create_foods") return { status: "executed", results: foodService.createFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
+    if (name === "update_foods") return { status: "executed", results: foodService.updateFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
     if (name === "delete_foods") {
       const actions = (args.ids || []).map((id) => ({ operation: "delete", id }));
       foodService.validateActions(householdId, actions);
@@ -367,7 +367,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
       return { cancelled: true, message };
     }
     const actions = JSON.parse(row.actions_json);
-    const results = foodService.applyActions(householdIdFor(userId), actions);
+    const results = foodService.applyActions(householdIdFor(userId), actions, { actorUserId: userId, source: "agent" });
     const changed = db.prepare("UPDATE agent_pending_actions SET resolved_at = ?, resolution = 'confirmed' WHERE id = ? AND resolved_at IS NULL").run(now, row.id);
     if (!changed.changes) throw new Error("pending action has already been resolved");
     const reply = await resumePendingReply(userId, row, { status: "executed", results }, `已执行：${executedSummary(results)}。`);

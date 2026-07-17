@@ -11,7 +11,7 @@ class FoodNotFoundError extends Error {
   }
 }
 
-function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {} }) {
+function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}, onActivity = () => {} }) {
   function normalizeBatchIds(ids) {
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 25) {
       throw new Error("ids must contain between 1 and 25 food IDs");
@@ -99,7 +99,7 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     return normalizeBatchIds(ids).map((id) => getFoodItem(householdId, id));
   }
 
-  function createFoodItem(householdId, input) {
+  function createFoodItem(householdId, input, context = {}) {
     const item = normalizeFoodInput(input);
     const now = new Date().toISOString();
     const created = db.prepare(`
@@ -108,10 +108,12 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(householdId, item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
     onChange(householdId);
-    return getFoodItem(householdId, Number(created.lastInsertRowid));
+    const result = getFoodItem(householdId, Number(created.lastInsertRowid));
+    onActivity(householdId, context.actorUserId ?? null, "create", result, context.source || "system");
+    return result;
   }
 
-  function updateFoodItem(householdId, id, patch) {
+  function updateFoodItem(householdId, id, patch, context = {}) {
     const row = db.prepare("SELECT * FROM food_items WHERE id = ? AND household_id = ?").get(Number(id), householdId);
     if (!row) throw new FoodNotFoundError();
     const item = normalizeFoodInput({
@@ -127,13 +129,16 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
       WHERE id = ? AND household_id = ?
     `).run(item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), Number(id), householdId);
     onChange(householdId);
-    return getFoodItem(householdId, id);
+    const result = getFoodItem(householdId, id);
+    onActivity(householdId, context.actorUserId ?? null, "update", result, context.source || "system");
+    return result;
   }
 
-  function deleteFoodItem(householdId, id) {
+  function deleteFoodItem(householdId, id, context = {}) {
     const item = getFoodItem(householdId, id);
     db.prepare("DELETE FROM food_items WHERE id = ? AND household_id = ?").run(Number(id), householdId);
     onChange(householdId);
+    onActivity(householdId, context.actorUserId ?? null, "delete", item, context.source || "system");
     return item;
   }
 
@@ -155,14 +160,14 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     });
   }
 
-  function applyActions(householdId, actions) {
+  function applyActions(householdId, actions, context = {}) {
     const normalized = validateActions(householdId, actions);
     db.exec("BEGIN IMMEDIATE");
     try {
       const results = normalized.map((action) => {
-        if (action.operation === "create") return { operation: "create", item: createFoodItem(householdId, action.input) };
-        if (action.operation === "update") return { operation: "update", item: updateFoodItem(householdId, action.id, action.patch) };
-        return { operation: "delete", item: deleteFoodItem(householdId, action.id) };
+        if (action.operation === "create") return { operation: "create", item: createFoodItem(householdId, action.input, context) };
+        if (action.operation === "update") return { operation: "update", item: updateFoodItem(householdId, action.id, action.patch, context) };
+        return { operation: "delete", item: deleteFoodItem(householdId, action.id, context) };
       });
       db.exec("COMMIT");
       return results;
@@ -172,20 +177,20 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     }
   }
 
-  function createFoodItems(householdId, items) {
+  function createFoodItems(householdId, items, context = {}) {
     if (!Array.isArray(items)) throw new Error("items must be an array");
-    return applyActions(householdId, items.map((input) => ({ operation: "create", input })));
+    return applyActions(householdId, items.map((input) => ({ operation: "create", input })), context);
   }
 
-  function updateFoodItems(householdId, items) {
+  function updateFoodItems(householdId, items, context = {}) {
     if (!Array.isArray(items)) throw new Error("items must be an array");
     const ids = normalizeBatchIds(items.map((item) => item?.id));
     const actions = items.map((item, index) => ({ operation: "update", id: ids[index], patch: item.patch || {} }));
-    return applyActions(householdId, actions);
+    return applyActions(householdId, actions, context);
   }
 
-  function deleteFoodItems(householdId, ids) {
-    return applyActions(householdId, normalizeBatchIds(ids).map((id) => ({ operation: "delete", id })));
+  function deleteFoodItems(householdId, ids, context = {}) {
+    return applyActions(householdId, normalizeBatchIds(ids).map((id) => ({ operation: "delete", id })), context);
   }
 
   return {

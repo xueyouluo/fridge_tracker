@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260716-6"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260717-2"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -139,16 +139,19 @@ test("phone and tablet presentation mode offers rich status, fullscreen and wake
   assert.match(html, /id="displayFullscreen"/);
   assert.match(html, /id="displayFoods"/);
   assert.match(html, /id="displayFreshnessBar"/);
+  assert.match(html, /id="displayActivities"/);
   assert.match(css, /body\.presentation-view-active \.topbar \{ display: none; \}/);
   assert.match(css, /body\.presentation-view-active \.quick-agent \{[\s\S]*bottom: max\(20px, env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /\.ambient-grid \{[\s\S]*grid-template-columns: minmax\(280px, \.88fr\) minmax\(430px, 1\.45fr\)/);
   assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.ambient-food-list \{ grid-template-columns: 1fr; \}/);
-  assert.match(app, /const views = new Set\(\["overview", "foods", "devices", "display", "agent", "users"\]\)/);
+  assert.match(app, /const views = new Set\(\["overview", "activities", "foods", "devices", "display", "agent", "users"\]\)/);
   assert.match(app, /navigator\.wakeLock\.request\("screen"\)/);
   assert.match(app, /document\.documentElement\.requestFullscreen/);
   assert.match(app, /button\.classList\.toggle\("hidden", !supported\)/);
   assert.match(app, /const DISPLAY_REFRESH_MS = 30 \* 1000;/);
   assert.match(app, /displayRefreshTimer = window\.setInterval\(refreshPresentationFoods, DISPLAY_REFRESH_MS\)/);
+  assert.match(app, /state\.activities\.slice\(0, 3\)/);
+  assert.match(app, /Promise\.all\(\[loadFoods\(\), loadActivities\(\)\]\)/);
   assert.match(app, /document\.addEventListener\("visibilitychange",[\s\S]*refreshPresentationFoods\(\)/);
   assert.match(css, /\.ambient-next-card \{[\s\S]*background: #f3dca9 !important;[\s\S]*color: #513b17;/);
   assert.match(app, /document\.body\.classList\.toggle\("presentation-view-active", target === "display"\)/);
@@ -192,7 +195,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260716-6/);
+  assert.match(html, /styles\.css\?v=20260717-2/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -206,7 +209,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("global quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260716-6/);
+  assert.match(html, /app\.js\?v=20260717-2/);
   assert.match(app, /const QUICK_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureQuickConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
@@ -312,6 +315,24 @@ test("pending actions show details before execution and block duplicate clicks",
   assert.match(app, /正在执行并生成回复/);
   assert.match(app, /button\.disabled = true/);
   assert.match(app, /\$\("#quickAgentMessages"\)\.addEventListener\("click", handleAgentActionClick\)/);
-  assert.match(app, /Promise\.all\(\[loadAgentMessages\(\), loadQuickAgentMessages\(\), loadFoods\(\)\]\)/);
+  assert.match(app, /Promise\.all\(\[loadAgentMessages\(\), loadQuickAgentMessages\(\), loadFoods\(\), loadActivities\(\)\]\)/);
   assert.doesNotMatch(app, /overviewAgentResult/);
+});
+
+test("household activity has an overview summary and a responsive full feed", () => {
+  const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
+  assert.match(html, /class="tile activity-summary"[\s\S]*<h2>最近操作<\/h2>/);
+  assert.match(html, /data-view-target="activities">查看全部/);
+  assert.match(html, /data-view-panel="activities" aria-label="家庭动态"/);
+  assert.match(html, /id="activityFeed"/);
+  assert.match(css, /\.activity-summary-list \{ display: grid; grid-template-columns: repeat\(3/);
+  assert.match(css, /\.activity-item \{[\s\S]*grid-template-columns: 44px minmax\(0, 1fr\) auto/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.activity-summary-list \{ grid-template-columns: 1fr; \}/);
+  assert.match(app, /async function loadActivities\(\{ append = false \} = \{\}\)/);
+  assert.match(app, /\/api\/activities/);
+  assert.match(server, /url\.pathname === "\/api\/activities"/);
+  assert.match(server, /activityService\.recordFood/);
 });

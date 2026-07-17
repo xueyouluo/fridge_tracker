@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20260716-6">
+  <link rel="stylesheet" href="/styles.css?v=20260717-2">
 </head>
 <body>
   <header class="topbar">
@@ -105,6 +105,18 @@
             </div>
             <div id="overviewFoods" class="priority-list"></div>
           </article>
+          <article class="tile activity-summary">
+            <div class="tile-head">
+              <div class="activity-heading">
+                <span class="activity-heading-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 11a2 2 0 0 0 4 0h-4Z"/></svg>
+                </span>
+                <div><p class="eyebrow">家庭动态</p><h2>最近操作</h2></div>
+              </div>
+              <button class="link" type="button" data-view-target="activities">查看全部 <span aria-hidden="true">→</span></button>
+            </div>
+            <div id="overviewActivities" class="activity-summary-list" aria-live="polite"></div>
+          </article>
           <article class="tile screen-summary">
             <div class="tile-head">
               <div><p class="eyebrow">电子纸同步</p><h2>墨水屏</h2></div>
@@ -114,6 +126,25 @@
             <div id="overviewDevice" class="sync-state"></div>
           </article>
         </div>
+      </section>
+
+      <section class="view" data-view-panel="activities" aria-label="家庭动态">
+        <div class="page-title activity-page-title">
+          <div><p class="eyebrow">家庭协作记录</p><h1>家庭动态</h1></div>
+          <button class="quiet activity-back" type="button" data-view-target="overview">← 返回概览</button>
+        </div>
+        <section class="panel activity-feed-panel">
+          <header class="activity-feed-header">
+            <div class="activity-heading">
+              <span class="activity-heading-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 11a2 2 0 0 0 4 0h-4Z"/></svg>
+              </span>
+              <div><h2>操作信息流</h2><p>家庭成员对食材、成员和设备的操作会显示在这里。</p></div>
+            </div>
+            <span id="activityCount" class="pill">0 条动态</span>
+          </header>
+          <div id="activityFeed" class="activity-feed" aria-live="polite"></div>
+        </section>
       </section>
 
       <section class="view presentation-view" data-view-panel="display" aria-label="家庭信息展示模式">
@@ -159,7 +190,14 @@
             </section>
 
             <aside class="ambient-details">
-              <section>
+              <section class="ambient-activity-card">
+                <div class="ambient-section-head">
+                  <div><p>家庭动态</p><h2>最近操作</h2></div>
+                  <span id="displayActivityCount">0 条</span>
+                </div>
+                <div id="displayActivities" class="ambient-activity-list"></div>
+              </section>
+              <section class="ambient-categories-card">
                 <div class="ambient-section-head"><div><p>库存构成</p><h2>冰箱里有什么</h2></div></div>
                 <div id="displayCategories" class="ambient-categories"></div>
               </section>
@@ -604,6 +642,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260716-6"></script>
+  <script src="/app.js?v=20260717-2"></script>
 </body>
 </html>

@@ -16,13 +16,13 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], activities: [], activitiesHasMore: false, devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
 const QUICK_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
 const VOICE_CANCEL_DISTANCE_PX = 72;
 const DISPLAY_REFRESH_MS = 30 * 1000;
-const views = new Set(["overview", "foods", "devices", "display", "agent", "users"]);
+const views = new Set(["overview", "activities", "foods", "devices", "display", "agent", "users"]);
 const loginPanel = $("#loginPanel");
 const workspace = $("#workspace");
 const message = $("#message");
@@ -193,7 +193,8 @@ function setView(view, options = {}) {
     panel.classList.toggle("active", panel.dataset.viewPanel === target);
   });
   document.querySelectorAll("#mainNav [data-view-target]").forEach((button) => {
-    const active = button.dataset.viewTarget === target;
+    const navTarget = target === "activities" ? "overview" : target;
+    const active = button.dataset.viewTarget === navTarget;
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -203,6 +204,7 @@ function setView(view, options = {}) {
   if (target === "display") startPresentation();
   else if (previousView === "display") stopPresentation();
   if (target === "agent") loadAgent().catch((error) => toast(error.message));
+  if (target === "overview" || target === "activities") loadActivities().catch((error) => toast(error.message));
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: target === "display" ? "auto" : "smooth" });
 }
 
@@ -527,7 +529,7 @@ async function enterWorkspace(user) {
   $("#accountName").textContent = displayName(user);
   $("#welcomeUser").textContent = displayName(user);
   await loadHousehold();
-  await Promise.all([loadFoods(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadVoiceSettings(), loadConversations()]);
+  await Promise.all([loadFoods(), loadActivities(), loadDevices(), loadUsers(), loadTokens(), loadAiSettings(), loadVoiceSettings(), loadConversations()]);
   const initialView = location.hash.slice(1);
   setView(initialView || "overview", { updateHash: false, scroll: false });
   await handlePendingHouseholdInvite();
@@ -582,11 +584,124 @@ async function handlePendingHouseholdInvite() {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("invite");
     history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-    await Promise.all([loadHousehold(), loadFoods(), loadDevices(), loadUsers()]);
+    await Promise.all([loadHousehold(), loadFoods(), loadActivities(), loadDevices(), loadUsers()]);
     toast("已加入家庭");
   } catch (error) {
     toast(error.code === "household_not_empty" ? "当前家庭已有食材或设备，暂时无法加入其他家庭" : error.message);
   }
+}
+
+const ACTIVITY_GLYPHS = {
+  food_created: "+",
+  food_updated: "↻",
+  food_deleted: "−",
+  household_invite_created: "✦",
+  household_member_joined: "人",
+  household_member_removed: "×",
+  household_member_left: "←",
+  device_paired: "▣"
+};
+
+function activityActor(activity) {
+  return activity.actor?.displayName || "系统";
+}
+
+function activitySource(activity) {
+  const labels = { agent: "食材助手", mcp: "MCP", web: "网页" };
+  return labels[activity.metadata?.source] || "";
+}
+
+function relativeActivityTime(value) {
+  const timestamp = new Date(value).getTime();
+  const elapsed = Date.now() - timestamp;
+  if (!Number.isFinite(timestamp) || elapsed < 0) return formatTime(value);
+  if (elapsed < 60 * 1000) return "刚刚";
+  if (elapsed < 60 * 60 * 1000) return `${Math.floor(elapsed / (60 * 1000))} 分钟前`;
+  if (elapsed < 24 * 60 * 60 * 1000) return `${Math.floor(elapsed / (60 * 60 * 1000))} 小时前`;
+  if (elapsed < 7 * 24 * 60 * 60 * 1000) return `${Math.floor(elapsed / (24 * 60 * 60 * 1000))} 天前`;
+  return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function activityDayKey(value) {
+  return dateKeyFromDate(new Date(value));
+}
+
+function activityDayLabel(value) {
+  const date = new Date(value);
+  const today = new Date();
+  const todayKey = dateKeyFromDate(today);
+  const yesterdayKey = dateKeyFromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12));
+  const key = activityDayKey(value);
+  if (key === todayKey) return "今天";
+  if (key === yesterdayKey) return "昨天";
+  return date.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+}
+
+function activityIcon(activity) {
+  return `<span class="activity-type-icon ${escapeHtml(activity.type)}" aria-hidden="true">${escapeHtml(ACTIVITY_GLYPHS[activity.type] || "·")}</span>`;
+}
+
+function renderOverviewActivities() {
+  const items = state.activities.slice(0, 3);
+  $("#overviewActivities").innerHTML = items.length ? items.map((activity) => `
+    <article class="activity-summary-item">
+      ${activityIcon(activity)}
+      <div class="activity-summary-copy">
+        <strong>${escapeHtml(activityActor(activity))} ${escapeHtml(activity.title)}</strong>
+        <span>${escapeHtml(activity.detail || relativeActivityTime(activity.createdAt))}${activity.detail ? ` · ${escapeHtml(relativeActivityTime(activity.createdAt))}` : ""}</span>
+      </div>
+    </article>
+  `).join("") : `<p class="activity-summary-empty">还没有家庭动态。添加或修改食材后，最近操作会显示在这里。</p>`;
+}
+
+function renderActivityFeed() {
+  $("#activityCount").textContent = `${state.activities.length}${state.activitiesHasMore ? "+" : ""} 条动态`;
+  if (!state.activities.length) {
+    $("#activityFeed").innerHTML = `<div class="activity-empty"><div>
+      <span class="activity-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 11a2 2 0 0 0 4 0h-4Z"/></svg></span>
+      <strong>还没有家庭动态</strong>
+      <p>从现在开始，家庭成员对食材、成员和设备的操作会按时间记录在这里。</p>
+    </div></div>`;
+    return;
+  }
+  const groups = [];
+  state.activities.forEach((activity) => {
+    const key = activityDayKey(activity.createdAt);
+    let group = groups.at(-1);
+    if (!group || group.key !== key) {
+      group = { key, label: activityDayLabel(activity.createdAt), items: [] };
+      groups.push(group);
+    }
+    group.items.push(activity);
+  });
+  const feed = groups.map((group) => `<section class="activity-day" aria-label="${escapeHtml(group.label)}">
+    <h2 class="activity-day-title">${escapeHtml(group.label)}</h2>
+    ${group.items.map((activity) => {
+      const source = activitySource(activity);
+      return `<article class="activity-item">
+        ${activityIcon(activity)}
+        <div class="activity-item-copy">
+          <div class="activity-item-meta"><strong>${escapeHtml(activityActor(activity))}</strong>${source ? `<span>通过${escapeHtml(source)}</span>` : ""}</div>
+          <h3>${escapeHtml(activity.title)}</h3>
+          ${activity.detail ? `<p>${escapeHtml(activity.detail)}</p>` : ""}
+        </div>
+        <time datetime="${escapeHtml(activity.createdAt)}" title="${escapeHtml(formatTime(activity.createdAt))}">${escapeHtml(relativeActivityTime(activity.createdAt))}</time>
+      </article>`;
+    }).join("")}
+  </section>`).join("");
+  $("#activityFeed").innerHTML = `${feed}${state.activitiesHasMore ? `<div class="activity-load-more"><button class="quiet" type="button" data-load-activities>加载更早动态</button></div>` : ""}`;
+}
+
+async function loadActivities({ append = false } = {}) {
+  const beforeId = append ? state.activities.at(-1)?.id : null;
+  const query = new URLSearchParams({ limit: "30" });
+  if (beforeId) query.set("beforeId", String(beforeId));
+  const result = await api(`/api/activities?${query}`);
+  state.activities = append ? [...state.activities, ...result.items] : result.items;
+  state.activitiesHasMore = result.hasMore;
+  renderOverviewActivities();
+  renderActivityFeed();
+  if (state.view === "display") renderPresentation();
 }
 
 async function loadFoods() {
@@ -680,6 +795,19 @@ function renderPresentation() {
   $("#displayNextFoodMeta").textContent = next
     ? `${next.category}${next.quantityText ? ` · ${next.quantityText}` : ""} · ${statusText(next)}`
     : "添加食材后会在这里显示提醒。";
+
+  const activities = state.activities.slice(0, 3);
+  $("#displayActivityCount").textContent = `${state.activities.length}${state.activitiesHasMore ? "+" : ""} 条`;
+  $("#displayActivities").innerHTML = activities.length
+    ? activities.map((activity) => `<article class="ambient-activity">
+        <span class="ambient-activity-icon ${escapeHtml(activity.type)}" aria-hidden="true">${escapeHtml(ACTIVITY_GLYPHS[activity.type] || "·")}</span>
+        <span class="ambient-activity-copy">
+          <strong>${escapeHtml(activityActor(activity))} ${escapeHtml(activity.title)}</strong>
+          <small>${escapeHtml(activity.detail || "家庭信息已更新")}</small>
+        </span>
+        <time datetime="${escapeHtml(activity.createdAt)}">${escapeHtml(relativeActivityTime(activity.createdAt))}</time>
+      </article>`).join("")
+    : `<div class="ambient-activity-empty">还没有家庭动态</div>`;
 }
 
 function updateWakeStatus(text, active = false) {
@@ -727,7 +855,8 @@ function startPresentation() {
 async function refreshPresentationFoods() {
   if (state.view !== "display" || !state.user) return;
   try {
-    await loadFoods();
+    await Promise.all([loadFoods(), loadActivities()]);
+    renderPresentation();
   } catch {
     updateWakeStatus("数据刷新失败");
   }
@@ -928,7 +1057,7 @@ async function deleteSelectedFoods() {
   if (!confirmed) return;
   await api("/api/foods/batch", { method: "POST", body: JSON.stringify({ operation: "delete", ids }) });
   state.foodList.selectedIds.clear();
-  await loadFoods();
+  await Promise.all([loadFoods(), loadActivities()]);
   toast(`已删除 ${ids.length} 项食材`);
 }
 
@@ -941,7 +1070,7 @@ async function updateSelectedFoodExpiry() {
     await api("/api/foods/batch", { method: "POST", body: JSON.stringify({ operation: "update_expiry", ids, expiresOn }) });
     closeBatchFoodDate();
     state.foodList.selectedIds.clear();
-    await loadFoods();
+    await Promise.all([loadFoods(), loadActivities()]);
     toast(`已更新 ${ids.length} 项食材的到期日`);
   } catch (error) {
     toast(error.message);
@@ -1332,6 +1461,15 @@ function formPayload(form) {
 }
 
 document.addEventListener("click", (event) => {
+  const loadMoreActivities = event.target.closest("[data-load-activities]");
+  if (loadMoreActivities) {
+    loadMoreActivities.disabled = true;
+    loadActivities({ append: true }).catch((error) => {
+      loadMoreActivities.disabled = false;
+      toast(error.message);
+    });
+    return;
+  }
   const fullscreen = event.target.closest("#displayFullscreen");
   if (fullscreen) {
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
@@ -1416,7 +1554,7 @@ foodForm.addEventListener("submit", async (event) => {
   try {
     const url = state.editingId ? `/api/foods/${state.editingId}` : "/api/foods";
     await api(url, { method: state.editingId ? "PATCH" : "POST", body: JSON.stringify(formPayload(foodForm)) });
-    await loadFoods();
+    await Promise.all([loadFoods(), loadActivities()]);
     await requestFoodEditorClose({ force: true });
     toast(editing ? "食材信息已更新" : "食材已添加");
   } catch (error) {
@@ -1522,7 +1660,7 @@ $("#foods").addEventListener("click", async (event) => {
     if (!confirmed) return;
     try {
       await api(`/api/foods/${remove.dataset.delete}`, { method: "DELETE" });
-      await loadFoods();
+      await Promise.all([loadFoods(), loadActivities()]);
       toast("食材已删除");
     } catch (error) {
       toast(error.message);
@@ -1546,7 +1684,7 @@ $("#displayFoods").addEventListener("click", async (event) => {
 
   try {
     await api(`/api/foods/${handle.dataset.displayHandle}`, { method: "DELETE" });
-    await loadFoods();
+    await Promise.all([loadFoods(), loadActivities()]);
     toast(item ? `${item.name} 已处理` : "食材已处理");
   } catch (error) {
     toast(error.message);
@@ -1664,7 +1802,7 @@ $("#householdMembers").addEventListener("click", async (event) => {
   if (!confirmed) return;
   try {
     await api(`/api/household/members/${button.dataset.removeHouseholdMember}`, { method: "DELETE" });
-    await loadHousehold();
+    await Promise.all([loadHousehold(), loadActivities()]);
     toast("家庭成员已移除");
   } catch (error) {
     toast(error.message);
@@ -1684,7 +1822,7 @@ $("#leaveHousehold").addEventListener("click", async () => {
     await api("/api/household/leave", { method: "POST", body: "{}" });
     state.householdInvite = null;
     $("#householdInvitePanel").classList.add("hidden");
-    await Promise.all([loadHousehold(), loadFoods(), loadDevices(), loadUsers()]);
+    await Promise.all([loadHousehold(), loadFoods(), loadActivities(), loadDevices(), loadUsers()]);
     toast("已退出家庭");
   } catch (error) {
     toast(error.message);
@@ -1925,7 +2063,7 @@ $("#agentForm").addEventListener("submit", async (event) => {
   $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
   try {
     await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
-    await Promise.all([loadConversations(), loadFoods()]);
+    await Promise.all([loadConversations(), loadFoods(), loadActivities()]);
   } catch (error) {
     $("#agentThinking")?.remove();
     textarea.value = content;
@@ -1960,7 +2098,7 @@ $("#quickAgentForm").addEventListener("submit", async (event) => {
     await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
     textarea.value = "";
     resizeAgentTextarea(textarea);
-    await Promise.all([loadConversations(), loadFoods()]);
+    await Promise.all([loadConversations(), loadFoods(), loadActivities()]);
     await loadQuickAgentMessages();
   } catch (error) {
     $("#quickAgentThinking")?.remove();
@@ -2008,7 +2146,7 @@ async function handleAgentActionClick(event) {
   actionButton.textContent = confirm ? "正在执行并生成回复…" : "正在取消…";
   try {
     const result = await api(`/api/agent/actions/${encodeURIComponent(id)}/${confirm ? "confirm" : "cancel"}`, { method: "POST", body: "{}" });
-    await Promise.all([loadAgentMessages(), loadQuickAgentMessages(), loadFoods()]);
+    await Promise.all([loadAgentMessages(), loadQuickAgentMessages(), loadFoods(), loadActivities()]);
     if (state.view === "devices") refreshPreview();
     const completedText = result.alreadyResolved
       ? (result.resolution === "confirmed" ? "操作已经执行，无需重复确认" : "操作已经取消")

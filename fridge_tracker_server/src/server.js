@@ -23,6 +23,7 @@ const { createAgentService } = require("./agent");
 const { DEFAULT_AGENT_INPUT_QUOTA, createAgentQuotaService, grantHistoricalAgentQuota } = require("./agentQuota");
 const { createMcpHandler } = require("./mcp");
 const { createHouseholdService } = require("./households");
+const { createActivityService } = require("./activities");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
 const { MAX_TRANSCRIPTION_REQUEST_CHARS, createTranscriptionService, resolveSystemAsrConfig } = require("./transcription");
 const {
@@ -64,12 +65,18 @@ const db = new DatabaseSync(databasePath);
 const frameCache = new Map();
 
 initializeDatabase();
+const activityService = createActivityService({ db });
 const householdService = createHouseholdService({ db, hashValue: sha256 });
 householdService.ensureHouseholds();
 seedLocalDemo();
 householdService.ensureHouseholds();
 migrateSystemAiSettings();
-const foodService = createFoodService({ db, timezone: config.timezone, onChange: invalidateFrames });
+const foodService = createFoodService({
+  db,
+  timezone: config.timezone,
+  onChange: invalidateFrames,
+  onActivity: (...args) => activityService.recordFood(...args)
+});
 const accessTokenService = createAccessTokenService(db);
 const aiSettingsService = createAiSettingsService(db, config.credentialEncryptionKey || config.adminPassword);
 const agentQuotaService = createAgentQuotaService(db);
@@ -185,6 +192,16 @@ function initializeDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS household_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS api_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -253,6 +270,7 @@ function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id);
     CREATE INDEX IF NOT EXISTS household_invites_household_idx ON household_invites(household_id, expires_at);
+    CREATE INDEX IF NOT EXISTS household_activities_household_idx ON household_activities(household_id, id DESC);
     CREATE INDEX IF NOT EXISTS agent_conversations_user_idx ON agent_conversations(user_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_messages_conversation_idx ON agent_messages(conversation_id, id);
   `);
@@ -843,6 +861,14 @@ async function routeApi(req, res, url) {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(serial, pairingResult.pairing.household_id, sha256(token), panel, now, now);
     }
+    activityService.record({
+      householdId: pairingResult.pairing.household_id,
+      actorUserId: pairingResult.pairing.created_by_user_id,
+      type: "device_paired",
+      title: "配对了墨水屏设备",
+      detail: serial,
+      metadata: { serial, panelProfile: panel }
+    });
     sendJson(res, 201, { serial, panelProfile: panel, deviceToken: token });
     return true;
   }
@@ -908,6 +934,13 @@ async function routeApi(req, res, url) {
     const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
     const protocol = forwardedProto || (config.secureCookies ? "https" : "http");
     const host = req.headers.host || `${config.host}:${config.port}`;
+    activityService.record({
+      householdId,
+      actorUserId: user.id,
+      type: "household_invite_created",
+      title: "创建了家庭邀请",
+      detail: "邀请链接将在 24 小时后失效"
+    });
     sendJson(res, 201, { ...invite, inviteUrl: `${protocol}://${host}/?invite=${invite.code}` });
     return true;
   }
@@ -920,18 +953,51 @@ async function routeApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/household/invites/accept") {
     const result = householdService.acceptInvite(user.id, (await readJson(req)).code);
     invalidateFrames();
+    activityService.record({
+      householdId: result.household.id,
+      actorUserId: user.id,
+      type: "household_member_joined",
+      title: "加入了家庭",
+      detail: result.household.name
+    });
     sendJson(res, 200, result);
     return true;
   }
 
   const householdMemberMatch = url.pathname.match(/^\/api\/household\/members\/(\d+)$/);
   if (householdMemberMatch && req.method === "DELETE") {
-    sendJson(res, 200, householdService.removeMember(user.id, Number(householdMemberMatch[1])));
+    const memberId = Number(householdMemberMatch[1]);
+    const member = db.prepare("SELECT login, display_name FROM users WHERE id = ?").get(memberId);
+    const result = householdService.removeMember(user.id, memberId);
+    activityService.record({
+      householdId,
+      actorUserId: user.id,
+      type: "household_member_removed",
+      title: "移除了一位家庭成员",
+      detail: member?.display_name || member?.login || "家庭成员",
+      metadata: { memberUserId: memberId }
+    });
+    sendJson(res, 200, result);
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/household/leave") {
-    sendJson(res, 200, householdService.leaveHousehold(user.id));
+    const result = householdService.leaveHousehold(user.id);
+    activityService.record({
+      householdId,
+      actorUserId: user.id,
+      type: "household_member_left",
+      title: "退出了家庭"
+    });
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/activities") {
+    sendJson(res, 200, activityService.list(householdId, {
+      limit: url.searchParams.get("limit") || 50,
+      beforeId: url.searchParams.get("beforeId")
+    }));
     return true;
   }
 
@@ -943,7 +1009,7 @@ async function routeApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/foods/batch") {
     const body = await readJson(req);
     if (body.operation === "delete") {
-      const results = foodService.deleteFoodItems(householdId, body.ids);
+      const results = foodService.deleteFoodItems(householdId, body.ids, { actorUserId: user.id, source: "web" });
       sendJson(res, 200, { ok: true, count: results.length, results });
       return true;
     }
@@ -952,7 +1018,7 @@ async function routeApi(req, res, url) {
         id,
         patch: { expiresOn: body.expiresOn, startDate: null, shelfLifeDays: null }
       }));
-      const results = foodService.updateFoodItems(householdId, items);
+      const results = foodService.updateFoodItems(householdId, items, { actorUserId: user.id, source: "web" });
       sendJson(res, 200, { ok: true, count: results.length, results });
       return true;
     }
@@ -960,18 +1026,18 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/foods") {
-    sendJson(res, 201, foodService.createFoodItem(householdId, await readJson(req)));
+    sendJson(res, 201, foodService.createFoodItem(householdId, await readJson(req), { actorUserId: user.id, source: "web" }));
     return true;
   }
 
   const foodMatch = url.pathname.match(/^\/api\/foods\/(\d+)$/);
   if (foodMatch && req.method === "PATCH") {
-    sendJson(res, 200, foodService.updateFoodItem(householdId, Number(foodMatch[1]), await readJson(req)));
+    sendJson(res, 200, foodService.updateFoodItem(householdId, Number(foodMatch[1]), await readJson(req), { actorUserId: user.id, source: "web" }));
     return true;
   }
 
   if (foodMatch && req.method === "DELETE") {
-    sendJson(res, 200, { ok: true, deleted: foodService.deleteFoodItem(householdId, Number(foodMatch[1])) });
+    sendJson(res, 200, { ok: true, deleted: foodService.deleteFoodItem(householdId, Number(foodMatch[1]), { actorUserId: user.id, source: "web" }) });
     return true;
   }
 
@@ -1096,7 +1162,8 @@ async function routeApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/devices/pairing-codes") {
-    sendJson(res, 201, createDevicePairingCode(user.id));
+    const pairing = createDevicePairingCode(user.id);
+    sendJson(res, 201, pairing);
     return true;
   }
 
