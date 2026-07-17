@@ -259,7 +259,7 @@ test("recent chat history drops leading fragments so the first history message i
   insertProtocol.run(conversation.id, "assistant", JSON.stringify({
     role: "assistant",
     content: null,
-    tool_calls: [{ id: "unfinished-call", type: "function", function: { name: "list_foods", arguments: "{}" } }]
+    tool_calls: [{ id: "unfinished-call", type: "function", function: { name: "list_items", arguments: "{}" } }]
   }), new Date(2026, 6, 12, 0, 1, 0).toISOString());
   insertProtocol.run(conversation.id, "tool", JSON.stringify({
     role: "tool",
@@ -306,19 +306,6 @@ test("agent exposes shared batch CRUD schemas and partial update rules", () => {
   assert.equal(remove.parameters.properties.ids.maxItems, 25);
 });
 
-test("agent still accepts deprecated food tool aliases without advertising them", () => {
-  const db = createTestDatabase();
-  const foods = createFoodService({ db });
-  const agent = createAgentService({ db, foodService: foods });
-  const conversation = agent.createConversation(1);
-  agent.executeTool(1, conversation.id, "create_foods", {
-    items: [{ name: "兼容测试", expiresOn: "2026-07-20" }]
-  });
-  const listed = agent.executeTool(1, conversation.id, "list_foods", { keyword: "兼容测试" });
-  assert.equal(listed.total, 1);
-  assert.equal(toolDefinitions.some((tool) => tool.name.endsWith("_foods")), false);
-});
-
 test("agent instructions treat food inference and health-item expiry differently", () => {
   const db = createTestDatabase();
   const agent = createAgentService({ db, foodService: createFoodService({ db }) });
@@ -326,7 +313,6 @@ test("agent instructions treat food inference and health-item expiry differently
   assert.match(agent.instructions(), /药品、保健品和其他健康相关物品/);
   assert.match(agent.instructions(), /绝不根据名称猜测有效期/);
   assert.match(agent.instructions(), /location/);
-  assert.match(agent.instructions(), /不要调用已弃用的 \*_foods 兼容别名/);
 });
 
 test("agent pauses at system confirmation and resumes with a tool-free reply", async () => {

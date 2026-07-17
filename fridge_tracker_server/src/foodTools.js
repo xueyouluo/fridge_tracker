@@ -29,7 +29,7 @@ const listFoodFields = {
 
 const positiveId = z.number().int().positive();
 const idBatch = z.array(positiveId).min(1).max(25);
-const canonicalInputShapes = {
+const inputShapes = {
   list_items: listFoodFields,
   get_items: { ids: idBatch.describe("要获取的物品 ID，1 到 25 项") },
   create_items: {
@@ -44,7 +44,7 @@ const canonicalInputShapes = {
   delete_items: { ids: idBatch.describe("要永久删除的物品 ID，1 到 25 项") }
 };
 
-const canonicalToolSpecs = [
+const toolSpecs = [
   {
     name: "list_items",
     description: "筛选当前家庭的有效期物品并返回 ID、存放地点、到期日和状态。适用于食品、药品、日用品等全部物品；结果按到期紧急度排序并支持分页。",
@@ -78,31 +78,7 @@ const canonicalToolSpecs = [
     description: "按准确 ID 批量永久删除当前家庭的 1 到 25 项有效期物品。整批校验并在同一事务中执行。",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   }
-].map((tool) => ({ ...tool, inputSchema: canonicalInputShapes[tool.name] }));
-
-const legacyToolAliases = Object.freeze({
-  list_foods: "list_items",
-  get_foods: "get_items",
-  create_foods: "create_items",
-  update_foods: "update_items",
-  delete_foods: "delete_items"
-});
-
-function canonicalToolName(name) {
-  return legacyToolAliases[name] || name;
-}
-
-const legacyToolSpecs = Object.entries(legacyToolAliases).map(([name, canonicalName]) => {
-  const canonical = canonicalToolSpecs.find((tool) => tool.name === canonicalName);
-  return {
-    ...canonical,
-    name,
-    description: `已弃用的兼容别名；请改用 ${canonicalName}。${canonical.description}`
-  };
-});
-
-const toolSpecs = [...canonicalToolSpecs, ...legacyToolSpecs];
-const inputShapes = Object.fromEntries(toolSpecs.map((tool) => [tool.name, tool.inputSchema]));
+].map((tool) => ({ ...tool, inputSchema: inputShapes[tool.name] }));
 
 function jsonParameters(inputSchema) {
   const schema = z.toJSONSchema(z.object(inputSchema));
@@ -110,10 +86,10 @@ function jsonParameters(inputSchema) {
   return schema;
 }
 
-const agentToolDefinitions = canonicalToolSpecs.map(({ name, description, inputSchema }) => ({
+const agentToolDefinitions = toolSpecs.map(({ name, description, inputSchema }) => ({
   name,
   description,
   parameters: jsonParameters(inputSchema)
 }));
 
-module.exports = { agentToolDefinitions, canonicalToolName, inputShapes, legacyToolAliases, toolSpecs };
+module.exports = { agentToolDefinitions, inputShapes, toolSpecs };
