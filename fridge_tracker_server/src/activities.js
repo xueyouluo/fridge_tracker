@@ -100,7 +100,7 @@ function createActivityService({ db }) {
 
   function recordFood(householdId, actorUserId, operation, item, source = "web") {
     const types = { create: "food_created", update: "food_updated", delete: "food_deleted" };
-    const titles = { create: "添加了食材", update: "更新了食材", delete: "移除了食材" };
+    const titles = { create: "添加了物品", update: "更新了物品", delete: "移除了物品" };
     return record({
       householdId,
       actorUserId,

@@ -34,6 +34,8 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
   function searchFoodItems(householdId, filters = {}) {
     const keyword = String(filters.keyword || "").trim().toLocaleLowerCase().slice(0, 100);
     const category = String(filters.category || "").trim().slice(0, 20);
+    const location = String(filters.location || "").trim();
+    if (location.length > 40) throw new Error("location must be at most 40 characters");
     const status = String(filters.status || "").trim();
     if (status && !FOOD_STATUSES.has(status)) throw new Error("unsupported food status");
     const expiresFrom = filters.expiresFrom ? parseDate(filters.expiresFrom, "expiresFrom") : null;
@@ -51,6 +53,10 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     if (category) {
       conditions.push("category = ?");
       params.push(category);
+    }
+    if (location) {
+      conditions.push("location_text = ?");
+      params.push(location);
     }
     if (status === "expired") {
       conditions.push("expires_on < ?");
@@ -72,8 +78,8 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     }
     if (keyword) {
       const escaped = keyword.replace(/[\\%_]/g, "\\$&");
-      conditions.push("(name LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\' OR quantity_text LIKE ? ESCAPE '\\')");
-      params.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
+      conditions.push("(name LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\' OR quantity_text LIKE ? ESCAPE '\\' OR location_text LIKE ? ESCAPE '\\')");
+      params.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
     }
 
     const where = conditions.join(" AND ");
@@ -104,9 +110,9 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
     const now = new Date().toISOString();
     const created = db.prepare(`
       INSERT INTO food_items
-        (household_id, name, category, quantity_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(householdId, item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
+        (household_id, name, category, quantity_text, location_text, start_date, shelf_life_days, expires_on, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(householdId, item.name, item.category, item.quantityText, item.location, item.startDate, item.shelfLifeDays, item.expiresOn, now, now);
     onChange(householdId);
     const result = getFoodItem(householdId, Number(created.lastInsertRowid));
     onActivity(householdId, context.actorUserId ?? null, "create", result, context.source || "system");
@@ -120,14 +126,15 @@ function createFoodService({ db, timezone = "Asia/Shanghai", onChange = () => {}
       name: patch.name ?? row.name,
       category: patch.category ?? row.category,
       quantityText: patch.quantityText ?? row.quantity_text,
+      location: patch.location ?? row.location_text,
       startDate: patch.startDate !== undefined ? patch.startDate : row.start_date,
       shelfLifeDays: patch.shelfLifeDays !== undefined ? patch.shelfLifeDays : row.shelf_life_days,
       expiresOn: patch.expiresOn !== undefined ? patch.expiresOn : row.expires_on
     });
     db.prepare(`
-      UPDATE food_items SET name = ?, category = ?, quantity_text = ?, start_date = ?, shelf_life_days = ?, expires_on = ?, updated_at = ?
+      UPDATE food_items SET name = ?, category = ?, quantity_text = ?, location_text = ?, start_date = ?, shelf_life_days = ?, expires_on = ?, updated_at = ?
       WHERE id = ? AND household_id = ?
-    `).run(item.name, item.category, item.quantityText, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), Number(id), householdId);
+    `).run(item.name, item.category, item.quantityText, item.location, item.startDate, item.shelfLifeDays, item.expiresOn, new Date().toISOString(), Number(id), householdId);
     onChange(householdId);
     const result = getFoodItem(householdId, id);
     onActivity(householdId, context.actorUserId ?? null, "update", result, context.source || "system");

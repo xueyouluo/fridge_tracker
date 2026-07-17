@@ -11,6 +11,7 @@ function food(index) {
     name: `食材 ${index}`,
     category: "蔬菜",
     quantityText: "1 份",
+    location: "冰箱冷藏层",
     expiresOn: "2026-05-30",
     daysRemaining: index,
     status: "normal"
@@ -39,7 +40,8 @@ test("dashboard summary shows expired and expiring counts together", () => {
 
   assert.match(html, /<span class="badge red">1 项已过期<\/span>/);
   assert.match(html, /<span class="badge yellow">1 项快过期<\/span>/);
-  assert.match(html, /全部食材 3 项/);
+  assert.match(html, /全部物品 3 项/);
+  assert.match(html, /冰箱冷藏层/);
 });
 
 test("4.2-inch tri-color layouts use compact row limits and no yellow ink", () => {
@@ -101,6 +103,20 @@ test("food category icons use four-color vector graphics and unknown categories 
   assert.match(html, /\.food\.red \.category-icon \.accent \{ fill:var\(--red\); \}/);
   assert.match(html, /\.food\.yellow \.category-icon \.accent \{ fill:var\(--yellow\); \}/);
   assert.doesNotMatch(html, /<img/);
+});
+
+test("general item categories render dedicated vector icons", () => {
+  const html = renderDashboardHtml([
+    { ...food(1), category: "药品", location: "客厅药箱" },
+    { ...food(2), category: "零食" },
+    { ...food(3), category: "日用品" },
+    { ...food(4), category: "宠物用品" }
+  ], "2026/05/25 10:30", { orientation: "portrait" });
+  assert.match(html, /data-icon="medicine"/);
+  assert.match(html, /data-icon="snack"/);
+  assert.match(html, /data-icon="household"/);
+  assert.match(html, /data-icon="pet"/);
+  assert.match(html, /客厅药箱/);
 });
 
 test("progress bars visibly distinguish the next seven days and decay over longer periods", () => {

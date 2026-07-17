@@ -62,6 +62,7 @@ test("agent executes batch creates but stages batch deletes and consumes confirm
     name: "酸奶",
     category: "其他",
     quantityText: "",
+    location: "",
     expiresOn: "2026-07-20"
   });
   assert.equal(pending.pendingAction.details.length, 2);
@@ -94,6 +95,7 @@ test("identical unresolved deletes reuse one pending action", () => {
     name: "牛奶",
     category: "乳品",
     quantityText: "1 瓶",
+    location: "",
     expiresOn: "2026-07-12"
   });
 });
@@ -282,7 +284,7 @@ test("agent list_foods exposes filters and returns a paginated subset", () => {
   assert.equal(result.hasMore, false);
   assert.deepEqual(result.items.map((item) => item.name), ["牛奶"]);
   const schema = toolDefinitions.find((tool) => tool.name === "list_foods").parameters.properties;
-  assert.deepEqual(Object.keys(schema), ["keyword", "category", "status", "expiresFrom", "expiresTo", "limit", "offset"]);
+  assert.deepEqual(Object.keys(schema), ["keyword", "category", "location", "status", "expiresFrom", "expiresTo", "limit", "offset"]);
 });
 
 test("agent exposes shared batch CRUD schemas and partial update rules", () => {
@@ -292,6 +294,7 @@ test("agent exposes shared batch CRUD schemas and partial update rules", () => {
   const remove = toolDefinitions.find((tool) => tool.name === "delete_foods");
   assert.equal(create.parameters.properties.items.minItems, 1);
   assert.equal(create.parameters.properties.items.maxItems, 25);
+  assert.ok(create.parameters.properties.items.items.properties.location);
   assert.match(create.description, /同一事务/);
   assert.match(update.description, /patch 表示这一项要修改的字段/);
   assert.match(update.description, /省略的字段保持原值/);
@@ -301,6 +304,15 @@ test("agent exposes shared batch CRUD schemas and partial update rules", () => {
   assert.match(updateItem.properties.id.description, /不要放进 patch/);
   assert.match(updateItem.properties.patch.description, /部分更新对象/);
   assert.equal(remove.parameters.properties.ids.maxItems, 25);
+});
+
+test("agent instructions treat food inference and health-item expiry differently", () => {
+  const db = createTestDatabase();
+  const agent = createAgentService({ db, foodService: createFoodService({ db }) });
+  assert.match(agent.instructions(), /对于食品/);
+  assert.match(agent.instructions(), /药品、保健品和其他健康相关物品/);
+  assert.match(agent.instructions(), /绝不根据名称猜测有效期/);
+  assert.match(agent.instructions(), /location/);
 });
 
 test("agent pauses at system confirmation and resumes with a tool-free reply", async () => {

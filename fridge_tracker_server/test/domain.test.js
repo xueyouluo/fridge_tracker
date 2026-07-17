@@ -57,12 +57,16 @@ test("food input accepts direct expiry dates and calculated expiry dates", () =>
       name: "生菜",
       category: "其他",
       quantityText: "",
+      location: "",
       startDate: "2026-05-24",
       shelfLifeDays: 3,
       expiresOn: "2026-05-27"
     }
   );
   assert.equal(addDays("2026-05-31", 1), "2026-06-01");
+  assert.equal(normalizeFoodInput({ name: "感冒药", location: "客厅药箱", expiresOn: "2028-05-31" }).location, "客厅药箱");
+  assert.equal(normalizeFoodInput({ name: "灭火器", startDate: "2026-01-01", shelfLifeDays: 5000 }).expiresOn, "2039-09-10");
+  assert.throws(() => normalizeFoodInput({ name: "测试", location: "位置".repeat(21), expiresOn: "2028-05-31" }), /at most 40/);
 });
 
 test("food states honor the expired and three-day warning boundaries", () => {

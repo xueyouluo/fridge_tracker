@@ -22,6 +22,7 @@ const { createAiSettingsService } = require("./aiSettings");
 const { createAgentService } = require("./agent");
 const { DEFAULT_AGENT_INPUT_QUOTA, createAgentQuotaService, grantHistoricalAgentQuota } = require("./agentQuota");
 const { createMcpHandler } = require("./mcp");
+const { migrateFoodItemFields } = require("./migrations");
 const { createHouseholdService } = require("./households");
 const { createActivityService } = require("./activities");
 const { renderDashboardHtml, renderFrame } = require("./renderer");
@@ -186,6 +187,7 @@ function initializeDatabase() {
       name TEXT NOT NULL,
       category TEXT NOT NULL,
       quantity_text TEXT NOT NULL,
+      location_text TEXT NOT NULL DEFAULT '',
       start_date TEXT,
       shelf_life_days INTEGER,
       expires_on TEXT NOT NULL,
@@ -278,6 +280,7 @@ function initializeDatabase() {
   grantHistoricalAgentQuota(db);
   ensureLegacyUserHouseholds();
   migrateHouseholdScopeTables();
+  migrateFoodItemFields(db);
   migrateSystemAiSettings();
   migrateAgentMessagesTable();
   migrateAgentPendingActionsTable();
@@ -362,6 +365,7 @@ function migrateHouseholdScopeTables() {
         name TEXT NOT NULL,
         category TEXT NOT NULL,
         quantity_text TEXT NOT NULL,
+        location_text TEXT NOT NULL DEFAULT '',
         start_date TEXT,
         shelf_life_days INTEGER,
         expires_on TEXT NOT NULL,
@@ -488,12 +492,12 @@ function seedLocalDemo() {
     ];
     const insert = db.prepare(`
       INSERT INTO food_items
-        (household_id, name, category, quantity_text, expires_on, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (household_id, name, category, quantity_text, location_text, expires_on, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const [name, category, quantityText, days] of examples) {
       const expiresOn = addDays(today, days);
-      insert.run(householdId, name, category, quantityText, expiresOn, now, now);
+      insert.run(householdId, name, category, quantityText, "冰箱", expiresOn, now, now);
     }
   }
 }

@@ -16,7 +16,7 @@ function scrubSensitiveAuthQuery() {
 }
 
 scrubSensitiveAuthQuery();
-const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], activities: [], activitiesHasMore: false, devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
+const state = { user: null, household: null, householdInvite: null, pendingInviteCode: new URL(window.location.href).searchParams.get("invite") || "", foods: [], activities: [], activitiesHasMore: false, devices: [], users: [], tokens: [], conversations: [], aiSettings: null, systemAiSettings: null, activeConversationId: null, agentConfigured: false, agentMode: "unconfigured", agentQuota: null, voiceConfigured: null, canManageUsers: false, today: "", editingId: null, view: "overview", foodList: { filter: "all", location: "", query: "", sort: "urgency", managing: false, expandedId: null, selectedIds: new Set() } };
 const QUICK_CONVERSATION_REUSE_MS = 60 * 60 * 1000;
 const MAX_VOICE_RECORDING_MS = 60 * 1000;
 const VOICE_LONG_PRESS_MS = 280;
@@ -45,7 +45,9 @@ const batchFoodDate = {
 const CATEGORY_OPTIONS = [
   ["水果", "🍓"], ["蔬菜", "🥬"], ["肉类", "🥩"], ["海鲜", "🐟"],
   ["乳品", "🥛"], ["蛋类", "🥚"], ["饮料", "🥤"], ["豆制品", "🫘"],
-  ["熟食", "🍱"], ["调味品", "🧂"], ["冷冻", "❄️"], ["甜点", "🍰"], ["其他", "📦"]
+  ["熟食", "🍱"], ["调味品", "🧂"], ["冷冻", "❄️"], ["甜点", "🍰"],
+  ["零食", "🍪"], ["药品", "💊"], ["保健品", "🧴"], ["美妆个护", "🧴"],
+  ["日用品", "🧻"], ["宠物用品", "🐾"], ["其他", "📦"]
 ];
 const loginForm = $("#loginForm");
 const registerForm = $("#registerForm");
@@ -316,12 +318,12 @@ function updateCalculatedExpiry() {
   const startDate = foodForm.elements.startDate.value;
   const daysText = foodForm.elements.shelfLifeDays.value;
   const days = Number(daysText);
-  if (startDate && daysText !== "" && Number.isInteger(days) && days >= 0 && days <= 3650) {
+  if (startDate && daysText !== "" && Number.isInteger(days) && days >= 0 && days <= 36500) {
     const expiry = offsetDateKey(startDate, days);
     output.textContent = `预计到期：${formatFoodDate(expiry)}`;
     output.classList.add("ready");
   } else {
-    output.textContent = "填写日期和保鲜天数后显示预计到期日";
+    output.textContent = "填写起始日期和有效天数后显示预计到期日";
     output.classList.remove("ready");
   }
 }
@@ -396,6 +398,7 @@ function foodEditorStateKey() {
     name: foodForm.elements.name.value,
     category: foodForm.elements.category.value,
     quantityText: foodForm.elements.quantityText.value,
+    location: foodForm.elements.location.value,
     expiryMode,
     expiresOn: foodForm.elements.expiresOn.value,
     startDate: foodForm.elements.startDate.value,
@@ -462,15 +465,16 @@ function openFoodEditor(item = null, trigger = document.activeElement) {
   foodForm.elements.id.value = item?.id ?? "";
   foodForm.elements.name.value = item?.name || "";
   foodForm.elements.quantityText.value = item?.quantityText || "";
+  foodForm.elements.location.value = item?.location || "";
   setCategory(item?.category || "");
   setDateValue("expiresOn", item?.expiresOn || "");
   setDateValue("startDate", item?.startDate || "");
   foodForm.elements.shelfLifeDays.value = item?.shelfLifeDays ?? "";
   updateShelfLifePresets();
   setExpiryMode(item?.startDate && item?.shelfLifeDays !== null ? "calculated" : "direct", { initialize: true });
-  foodEditor.title.textContent = item ? "编辑食材" : "添加食材";
-  foodEditor.hint.textContent = item ? "修改后会同步更新概览和墨水屏内容。" : "填写食材名称、分类和到期信息即可。";
-  foodEditor.save.textContent = item ? "保存修改" : "添加食材";
+  foodEditor.title.textContent = item ? "编辑物品" : "添加物品";
+  foodEditor.hint.textContent = item ? "修改后会同步更新概览和墨水屏内容。" : "填写物品名称、分类和到期信息即可。";
+  foodEditor.save.textContent = item ? "保存修改" : "添加物品";
   foodEditorPreviousFocus = trigger;
   foodEditor.overlay.classList.remove("hidden");
   foodEditor.overlay.setAttribute("aria-hidden", "false");
@@ -484,11 +488,11 @@ function validateFoodForm() {
   clearFoodFormErrors();
   const focusTargets = [];
   if (!foodForm.elements.name.value.trim()) {
-    setFieldError("name", "请输入食材名称");
+    setFieldError("name", "请输入物品名称");
     focusTargets.push(foodForm.elements.name);
   }
   if (!foodForm.elements.category.value) {
-    setFieldError("category", "请选择食材分类");
+    setFieldError("category", "请选择物品分类");
     focusTargets.push($("#categoryTrigger"));
   }
   if (expiryMode === "direct") {
@@ -498,16 +502,16 @@ function validateFoodForm() {
     }
   } else {
     if (!foodForm.elements.startDate.value) {
-      setFieldError("startDate", "请选择购买或生产日期");
+      setFieldError("startDate", "请选择起始日期");
       focusTargets.push(document.querySelector('[data-date-target="startDate"]'));
     }
     const value = foodForm.elements.shelfLifeDays.value;
     const days = Number(value);
     if (value === "") {
-      setFieldError("shelfLifeDays", "请输入保鲜天数");
+      setFieldError("shelfLifeDays", "请输入有效天数");
       focusTargets.push(foodForm.elements.shelfLifeDays);
-    } else if (!Number.isInteger(days) || days < 0 || days > 3650) {
-      setFieldError("shelfLifeDays", "请输入 0 至 3650 之间的整数");
+    } else if (!Number.isInteger(days) || days < 0 || days > 36500) {
+      setFieldError("shelfLifeDays", "请输入 0 至 36500 之间的整数");
       focusTargets.push(foodForm.elements.shelfLifeDays);
     }
   }
@@ -556,8 +560,8 @@ async function loadHousehold() {
   $("#householdRole").textContent = householdRoleText(result.currentRole);
   $("#householdRole").className = `role-pill ${result.currentRole === "owner" ? "admin" : "member"}`;
   $("#householdHint").textContent = result.currentRole === "owner"
-    ? "你可以邀请家人、管理成员和配对设备，所有成员共同维护食材。"
-    : "你和家人共同维护食材；成员邀请和设备配对由家庭创建者管理。";
+    ? "你可以邀请家人、管理成员和配对设备，所有成员共同维护物品。"
+    : "你和家人共同维护物品；成员邀请和设备配对由家庭创建者管理。";
   $("#householdMembers").innerHTML = result.members.map(renderHouseholdMember).join("");
   $("#createHouseholdInvite").classList.toggle("hidden", !result.permissions.manageMembers);
   $("#leaveHousehold").classList.toggle("hidden", !result.permissions.leaveHousehold);
@@ -575,7 +579,7 @@ async function handlePendingHouseholdInvite() {
     const confirmed = await confirmDialog({
       eyebrow: "家庭邀请",
       title: `加入“${invite.household.name}”？`,
-      body: `${invite.inviter.displayName} 邀请你共同管理家庭食材和屏幕内容。加入后，你当前的空家庭会被替换。`,
+      body: `${invite.inviter.displayName} 邀请你共同管理家庭物品和屏幕内容。加入后，你当前的空家庭会被替换。`,
       confirmText: "加入家庭"
     });
     if (!confirmed) return;
@@ -587,7 +591,7 @@ async function handlePendingHouseholdInvite() {
     await Promise.all([loadHousehold(), loadFoods(), loadActivities(), loadDevices(), loadUsers()]);
     toast("已加入家庭");
   } catch (error) {
-    toast(error.code === "household_not_empty" ? "当前家庭已有食材或设备，暂时无法加入其他家庭" : error.message);
+    toast(error.code === "household_not_empty" ? "当前家庭已有物品或设备，暂时无法加入其他家庭" : error.message);
   }
 }
 
@@ -607,7 +611,7 @@ function activityActor(activity) {
 }
 
 function activitySource(activity) {
-  const labels = { agent: "食材助手", mcp: "MCP", web: "网页" };
+  const labels = { agent: "物品助手", mcp: "MCP", web: "网页" };
   return labels[activity.metadata?.source] || "";
 }
 
@@ -651,7 +655,7 @@ function renderOverviewActivities() {
         <span>${escapeHtml(activity.detail || relativeActivityTime(activity.createdAt))}${activity.detail ? ` · ${escapeHtml(relativeActivityTime(activity.createdAt))}` : ""}</span>
       </div>
     </article>
-  `).join("") : `<p class="activity-summary-empty">还没有家庭动态。添加或修改食材后，最近操作会显示在这里。</p>`;
+  `).join("") : `<p class="activity-summary-empty">还没有家庭动态。添加或修改物品后，最近操作会显示在这里。</p>`;
 }
 
 function renderActivityFeed() {
@@ -660,7 +664,7 @@ function renderActivityFeed() {
     $("#activityFeed").innerHTML = `<div class="activity-empty"><div>
       <span class="activity-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 11a2 2 0 0 0 4 0h-4Z"/></svg></span>
       <strong>还没有家庭动态</strong>
-      <p>从现在开始，家庭成员对食材、成员和设备的操作会按时间记录在这里。</p>
+      <p>从现在开始，家庭成员对物品、成员和设备的操作会按时间记录在这里。</p>
     </div></div>`;
     return;
   }
@@ -711,14 +715,25 @@ async function loadFoods() {
   const currentIds = new Set(result.items.map((item) => item.id));
   state.foodList.selectedIds = new Set([...state.foodList.selectedIds].filter((id) => currentIds.has(id)));
   if (!currentIds.has(state.foodList.expandedId)) state.foodList.expandedId = null;
-  $("#foodCount").textContent = `${result.items.length} 项食材`;
+  updateLocationChoices();
+  $("#foodCount").textContent = `${result.items.length} 项物品`;
   $("#todayText").textContent = `今天 ${result.today} · 按到期紧急度排序`;
   renderMetrics();
   renderFoodList();
   $("#overviewFoods").innerHTML = result.items.length
     ? result.items.slice(0, 4).map(renderPriorityFood).join("")
-    : `<p class="muted">添加食材后，这里会优先展示即将到期的内容。</p>`;
+    : `<p class="muted">添加物品后，这里会优先展示即将到期的内容。</p>`;
   if (state.view === "display") renderPresentation();
+}
+
+function updateLocationChoices() {
+  const locations = [...new Set(state.foods.map((item) => item.location).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "zh-CN"));
+  $("#foodLocationSuggestions").innerHTML = locations.map((location) => `<option value="${escapeHtml(location)}"></option>`).join("");
+  const selected = locations.includes(state.foodList.location) ? state.foodList.location : "";
+  state.foodList.location = selected;
+  $("#foodLocationFilter").innerHTML = `<option value="">全部地点</option>${locations.map((location) => `<option value="${escapeHtml(location)}">${escapeHtml(location)}</option>`).join("")}`;
+  $("#foodLocationFilter").value = selected;
 }
 
 function renderMetrics() {
@@ -747,19 +762,19 @@ function renderPresentation() {
   const urgent = expired + expiring;
   const freshness = total ? Math.round((fresh / total) * 100) : 100;
   const headline = expired
-    ? `有 ${expired} 项食材需要尽快处理`
+    ? `有 ${expired} 项物品需要尽快处理`
     : expiring
-      ? `有 ${expiring} 项食材即将到期`
+      ? `有 ${expiring} 项物品即将到期`
       : total
-        ? "今天的冰箱状态很好"
-        : "从添加第一项食材开始";
+        ? "今天的物品状态很好"
+        : "从添加第一项物品开始";
   const summary = urgent
-    ? `优先查看下面的提醒，合理安排今天的餐食，减少食材浪费。`
+    ? "优先查看下面的提醒，及时使用、补充或处理临期物品。"
     : total
-      ? "当前没有临期提醒，可以放心按计划享用。"
-      : "记录食材后，这里会自动整理到期顺序和库存构成。";
+      ? "当前没有临期提醒，可以按计划使用。"
+      : "记录物品后，这里会自动整理到期顺序、地点和分类构成。";
 
-  $("#displayHouseholdName").textContent = state.household?.household?.name || "家庭冰箱";
+  $("#displayHouseholdName").textContent = state.household?.household?.name || "家庭物品";
   $("#displayHeadline").textContent = headline;
   $("#displaySummary").textContent = summary;
   $("#displayTotalCount").textContent = total;
@@ -772,13 +787,13 @@ function renderPresentation() {
   $("#displayFoods").innerHTML = state.foods.length
     ? state.foods.slice(0, 6).map((item) => `<article class="ambient-food ${item.status}">
         <span class="ambient-food-glyph" aria-hidden="true">${categoryGlyph(item.category)}</span>
-        <span class="ambient-food-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category)}${item.quantityText ? ` · ${escapeHtml(item.quantityText)}` : ""}</span></span>
+        <span class="ambient-food-copy"><strong>${escapeHtml(item.name)}</strong><span>${[item.category, item.location, item.quantityText].filter(Boolean).map(escapeHtml).join(" · ")}</span></span>
         <span class="ambient-food-actions">
           <span class="ambient-food-status">${escapeHtml(compactStatusText(item))}</span>
           ${item.status === "expired" || item.status === "expiring" ? `<button type="button" class="ambient-food-handle" data-display-handle="${item.id}">快速处理</button>` : ""}
         </span>
       </article>`).join("")
-    : `<div class="ambient-food-empty">冰箱里还没有记录<br>添加食材后会按紧急程度展示</div>`;
+    : `<div class="ambient-food-empty">家里还没有记录<br>添加物品后会按紧急程度展示</div>`;
 
   const categories = new Map();
   state.foods.forEach((item) => categories.set(item.category, (categories.get(item.category) || 0) + 1));
@@ -788,13 +803,13 @@ function renderPresentation() {
       .slice(0, 7)
       .map(([category, count]) => `<span class="ambient-category"><span aria-hidden="true">${categoryGlyph(category)}</span>${escapeHtml(category)} <strong>${count}</strong></span>`)
       .join("")
-    : `<span class="ambient-category">暂无库存分类</span>`;
+    : `<span class="ambient-category">暂无物品分类</span>`;
 
   const next = state.foods[0];
-  $("#displayNextFood").textContent = next?.name || "暂无食材";
+  $("#displayNextFood").textContent = next?.name || "暂无物品";
   $("#displayNextFoodMeta").textContent = next
-    ? `${next.category}${next.quantityText ? ` · ${next.quantityText}` : ""} · ${statusText(next)}`
-    : "添加食材后会在这里显示提醒。";
+    ? `${[next.category, next.location, next.quantityText].filter(Boolean).join(" · ")} · ${statusText(next)}`
+    : "添加物品后会在这里显示提醒。";
 
   const activities = state.activities.slice(0, 3);
   $("#displayActivityCount").textContent = `${state.activities.length}${state.activitiesHasMore ? "+" : ""} 条`;
@@ -880,7 +895,7 @@ function statusText(item) {
 function renderPriorityFood(item) {
   return `<article class="priority-food">
     <strong>${escapeHtml(item.name)}</strong>
-    <small>${escapeHtml(item.category)} · 到期 ${escapeHtml(item.expiresOn)}</small>
+    <small>${[item.category, item.location, `到期 ${item.expiresOn}`].filter(Boolean).map(escapeHtml).join(" · ")}</small>
     <span class="tag ${item.status}">${escapeHtml(statusText(item))}</span>
   </article>`;
 }
@@ -888,10 +903,10 @@ function renderPriorityFood(item) {
 const FOOD_LIST_GROUPS = [
   { status: "expired", label: "已过期" },
   { status: "expiring", label: "即将到期" },
-  { status: "normal", label: "新鲜" }
+  { status: "normal", label: "状态正常" }
 ];
 const FOOD_LIST_MENU_LABELS = {
-  status: { all: "全部状态", expired: "已过期", expiring: "即将到期", normal: "新鲜" },
+  status: { all: "全部状态", expired: "已过期", expiring: "即将到期", normal: "状态正常" },
   sort: { urgency: "紧急优先", name: "名称排序" }
 };
 
@@ -939,9 +954,15 @@ function compactFoodDate(dateKey) {
 }
 
 function visibleFoodItems() {
-  const filtered = state.foodList.filter === "all"
+  let filtered = state.foodList.filter === "all"
     ? [...state.foods]
     : state.foods.filter((item) => item.status === state.foodList.filter);
+  if (state.foodList.location) filtered = filtered.filter((item) => item.location === state.foodList.location);
+  const query = state.foodList.query.trim().toLocaleLowerCase();
+  if (query) {
+    filtered = filtered.filter((item) => [item.name, item.category, item.location, item.quantityText]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query)));
+  }
   if (state.foodList.sort === "name") {
     filtered.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
   }
@@ -953,7 +974,7 @@ function renderFood(item) {
   const selected = state.foodList.selectedIds.has(item.id);
   const summary = `<span class="food-row-summary">
     <span class="food-row-primary"><strong>${escapeHtml(item.name)}</strong>${item.quantityText ? `<span>${escapeHtml(item.quantityText)}</span>` : ""}</span>
-    <span class="food-row-meta">${escapeHtml(item.category)} · 到期 ${escapeHtml(compactFoodDate(item.expiresOn))}</span>
+    <span class="food-row-meta">${[item.category, item.location, `到期 ${compactFoodDate(item.expiresOn)}`].filter(Boolean).map(escapeHtml).join(" · ")}</span>
   </span>`;
   if (state.foodList.managing) {
     return `<article class="food-list-row ${item.status} ${selected ? "selected" : ""}">
@@ -974,6 +995,7 @@ function renderFood(item) {
     ${expanded ? `<div id="food-details-${item.id}" class="food-row-details">
       <dl>
         <div><dt>分类</dt><dd>${escapeHtml(item.category)}</dd></div>
+        <div><dt>地点</dt><dd>${escapeHtml(item.location || "未填写")}</dd></div>
         <div><dt>到期日</dt><dd>${escapeHtml(item.expiresOn)}</dd></div>
         <div><dt>数量</dt><dd>${escapeHtml(item.quantityText || "未填写")}</dd></div>
       </dl>
@@ -1003,13 +1025,15 @@ function renderFoodList() {
   $("#foodManageToggle").setAttribute("aria-pressed", String(state.foodList.managing));
   $("#foodStatusFilter").disabled = state.foodList.managing;
   $("#foodSortOrder").disabled = state.foodList.managing;
+  $("#foodSearch").disabled = state.foodList.managing;
+  $("#foodLocationFilter").disabled = state.foodList.managing;
   syncFoodListMenu("status", state.foodList.filter);
   syncFoodListMenu("sort", state.foodList.sort);
   if (state.foodList.managing) closeFoodListMenus();
   $("#foods").classList.toggle("managing", state.foodList.managing);
   $("#foods").innerHTML = items.length
     ? FOOD_LIST_GROUPS.map((group) => renderFoodGroup(group, items.filter((item) => item.status === group.status))).join("")
-    : `<div class="food-list-empty">${state.foods.length ? "没有符合筛选条件的食材。" : "尚未添加食材。"}</div>`;
+    : `<div class="food-list-empty">${state.foods.length ? "没有符合筛选条件的物品。" : "尚未添加物品。"}</div>`;
 
   const selectedCount = state.foodList.selectedIds.size;
   $("#foodBatchBar").classList.toggle("hidden", !state.foodList.managing);
@@ -1049,8 +1073,8 @@ async function deleteSelectedFoods() {
   if (!ids.length) return;
   const confirmed = await confirmDialog({
     eyebrow: "批量删除",
-    title: `确定删除所选 ${ids.length} 项食材吗？`,
-    body: "删除后，这些食材会从家庭记录中移除，墨水屏下次刷新时同步更新。",
+    title: `确定删除所选 ${ids.length} 项物品吗？`,
+    body: "删除后，这些物品会从家庭记录中移除，墨水屏下次刷新时同步更新。",
     confirmText: "删除",
     tone: "danger"
   });
@@ -1058,7 +1082,7 @@ async function deleteSelectedFoods() {
   await api("/api/foods/batch", { method: "POST", body: JSON.stringify({ operation: "delete", ids }) });
   state.foodList.selectedIds.clear();
   await Promise.all([loadFoods(), loadActivities()]);
-  toast(`已删除 ${ids.length} 项食材`);
+  toast(`已删除 ${ids.length} 项物品`);
 }
 
 async function updateSelectedFoodExpiry() {
@@ -1071,7 +1095,7 @@ async function updateSelectedFoodExpiry() {
     closeBatchFoodDate();
     state.foodList.selectedIds.clear();
     await Promise.all([loadFoods(), loadActivities()]);
-    toast(`已更新 ${ids.length} 项食材的到期日`);
+    toast(`已更新 ${ids.length} 项物品的到期日`);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -1234,8 +1258,8 @@ function setConversationListOpen(open) {
 
 function renderPendingDetail(detail) {
   const actionLabels = { create: "新增", update: "修改", delete: "删除" };
-  const metadata = [detail.category, detail.quantityText, detail.expiresOn ? `到期 ${detail.expiresOn}` : ""].filter(Boolean);
-  return `<li><strong>${escapeHtml(actionLabels[detail.operation] || "变更")}「${escapeHtml(detail.name || "食材")}」</strong>
+  const metadata = [detail.category, detail.location, detail.quantityText, detail.expiresOn ? `到期 ${detail.expiresOn}` : ""].filter(Boolean);
+  return `<li><strong>${escapeHtml(actionLabels[detail.operation] || "变更")}「${escapeHtml(detail.name || "物品")}」</strong>
     ${metadata.length ? `<span>${metadata.map(escapeHtml).join(" · ")}</span>` : ""}
   </li>`;
 }
@@ -1251,7 +1275,7 @@ function renderAgentEvent(event, seenPendingIds = new Set()) {
     }
     const details = pending.details || [];
     const onlyDeletes = details.length > 0 && details.every((detail) => detail.operation === "delete");
-    const confirmationTitle = onlyDeletes ? `确认删除以下 ${details.length} 项食材？` : "确认执行以下变更？";
+    const confirmationTitle = onlyDeletes ? `确认删除以下 ${details.length} 项物品？` : "确认执行以下变更？";
     return `<article class="pending-action" data-pending-card="${escapeHtml(pending.id)}">
       <strong>${escapeHtml(confirmationTitle)}</strong><span>${escapeHtml(pending.summary)}</span>
       ${details.length ? `<ul class="pending-details">${details.map(renderPendingDetail).join("")}</ul>` : ""}
@@ -1365,7 +1389,7 @@ function renderUser(user) {
     <small>${escapeHtml(user.email || user.login)}</small>
     <span class="role-pill ${user.role === "admin" ? "admin" : "member"}">${escapeHtml(roleText(user.role))}</span>
     <div class="user-meta">
-      <span>${escapeHtml(user.foodCount ?? 0)} 项食材</span>
+      <span>${escapeHtml(user.foodCount ?? 0)} 项物品</span>
       <span>${escapeHtml(user.deviceCount ?? 0)} 台设备</span>
       <span>Agent 剩余 ${escapeHtml(user.agentQuota?.remaining ?? 0)} / ${escapeHtml(user.agentQuota?.limit ?? 0)} 次</span>
       <span>${escapeHtml(formatDate(user.createdAt))}</span>
@@ -1454,6 +1478,7 @@ function formPayload(form) {
     name: data.get("name"),
     category: data.get("category"),
     quantityText: data.get("quantityText"),
+    location: data.get("location"),
     expiresOn: expiryMode === "direct" ? data.get("expiresOn") || null : null,
     startDate: expiryMode === "calculated" ? data.get("startDate") || null : null,
     shelfLifeDays: expiryMode === "calculated" ? data.get("shelfLifeDays") || null : null
@@ -1556,7 +1581,7 @@ foodForm.addEventListener("submit", async (event) => {
     await api(url, { method: state.editingId ? "PATCH" : "POST", body: JSON.stringify(formPayload(foodForm)) });
     await Promise.all([loadFoods(), loadActivities()]);
     await requestFoodEditorClose({ force: true });
-    toast(editing ? "食材信息已更新" : "食材已添加");
+    toast(editing ? "物品信息已更新" : "物品已添加");
   } catch (error) {
     toast(`保存失败：${error.message}`);
   } finally {
@@ -1649,10 +1674,10 @@ $("#foods").addEventListener("click", async (event) => {
   if (remove) {
     const item = state.foods.find((food) => food.id === Number(remove.dataset.delete));
     const confirmed = await confirmDialog({
-      eyebrow: "删除食材",
-      title: "确定删除该食材吗？",
+      eyebrow: "删除物品",
+      title: "确定删除该物品吗？",
       body: item
-        ? `${item.name} 将从冰箱记录中移除，墨水屏下次刷新时也会同步更新。`
+        ? `${item.name} 将从家庭记录中移除，墨水屏下次刷新时也会同步更新。`
         : "删除后将无法在列表中继续显示。",
       confirmText: "删除",
       tone: "danger"
@@ -1661,7 +1686,7 @@ $("#foods").addEventListener("click", async (event) => {
     try {
       await api(`/api/foods/${remove.dataset.delete}`, { method: "DELETE" });
       await Promise.all([loadFoods(), loadActivities()]);
-      toast("食材已删除");
+      toast("物品已删除");
     } catch (error) {
       toast(error.message);
     }
@@ -1675,8 +1700,8 @@ $("#displayFoods").addEventListener("click", async (event) => {
   const item = state.foods.find((food) => food.id === Number(handle.dataset.displayHandle));
   const confirmed = await confirmDialog({
     eyebrow: "快速处理",
-    title: item ? `确认已处理“${item.name}”？` : "确认已处理该食材？",
-    body: "确认后将从当前库存移除，墨水屏下次刷新时也会同步更新。",
+    title: item ? `确认已处理“${item.name}”？` : "确认已处理该物品？",
+    body: "确认后将从当前记录移除，墨水屏下次刷新时也会同步更新。",
     confirmText: "确认处理",
     tone: "danger"
   });
@@ -1685,7 +1710,7 @@ $("#displayFoods").addEventListener("click", async (event) => {
   try {
     await api(`/api/foods/${handle.dataset.displayHandle}`, { method: "DELETE" });
     await Promise.all([loadFoods(), loadActivities()]);
-    toast(item ? `${item.name} 已处理` : "食材已处理");
+    toast(item ? `${item.name} 已处理` : "物品已处理");
   } catch (error) {
     toast(error.message);
   }
@@ -1705,6 +1730,18 @@ document.querySelectorAll(".food-filter-trigger").forEach((trigger) => {
     event.stopPropagation();
     toggleFoodListMenu(trigger.closest("[data-food-menu]").dataset.foodMenu);
   });
+});
+
+$("#foodSearch").addEventListener("input", (event) => {
+  state.foodList.query = event.target.value;
+  state.foodList.expandedId = null;
+  renderFoodList();
+});
+
+$("#foodLocationFilter").addEventListener("change", (event) => {
+  state.foodList.location = event.target.value;
+  state.foodList.expandedId = null;
+  renderFoodList();
 });
 
 $(".food-list-tools").addEventListener("click", (event) => {
@@ -1795,7 +1832,7 @@ $("#householdMembers").addEventListener("click", async (event) => {
   const confirmed = await confirmDialog({
     eyebrow: "家庭成员",
     title: `移除“${member?.displayName || "该成员"}”？`,
-    body: "移除后，对方将立即失去这个家庭的食材、设备和屏幕访问权限，并获得一个新的空家庭。",
+    body: "移除后，对方将立即失去这个家庭的物品、设备和屏幕访问权限，并获得一个新的空家庭。",
     confirmText: "移除",
     tone: "danger"
   });
@@ -1813,7 +1850,7 @@ $("#leaveHousehold").addEventListener("click", async () => {
   const confirmed = await confirmDialog({
     eyebrow: "退出家庭",
     title: `退出“${state.household?.household.name || "当前家庭"}”？`,
-    body: "退出后你将无法访问当前家庭的食材、设备和屏幕内容，系统会为你创建一个新的空家庭。",
+    body: "退出后你将无法访问当前家庭的物品、设备和屏幕内容，系统会为你创建一个新的空家庭。",
     confirmText: "退出",
     tone: "danger"
   });
@@ -1978,7 +2015,7 @@ $("#copyAgentSetup").addEventListener("click", async () => {
 $("#accessTokens").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-revoke-token]");
   if (!button) return;
-  const confirmed = await confirmDialog({ title: "撤销访问令牌？", body: "使用该令牌的 Agent 将立即无法访问食材。", confirmText: "撤销", tone: "danger" });
+  const confirmed = await confirmDialog({ title: "撤销访问令牌？", body: "使用该令牌的 Agent 将立即无法访问物品。", confirmText: "撤销", tone: "danger" });
   if (!confirmed) return;
   try {
     await api(`/api/access-tokens/${button.dataset.revokeToken}`, { method: "DELETE" });

@@ -45,6 +45,12 @@ function categoryIcon(category) {
     "调味品": ["condiment", `<path d="M11 11h10l2 4v11H9V15l2-4Zm1 0V7h8v4m-6-4V5h4"/><path d="M12 17h8v5h-8z"/>`],
     "冷冻": ["frozen", `<path d="M16 6v20M7.3 11l17.4 10M7.3 21l17.4-10M16 6l-2.5 2.5M16 6l2.5 2.5M7.3 11l3.4.9M7.3 11l.9 3.4m16.5-3.4-3.4.9m3.4-.9-.9 3.4M7.3 21l3.4-.9M7.3 21l.9-3.4m16.5 3.4-3.4-.9m3.4.9-.9-3.4M16 26l-2.5-2.5M16 26l2.5-2.5"/>`],
     "甜点": ["dessert", `<path d="M8 24h16L11 13l-3 11Zm2.5-5h8m-9 3h12"/><path d="M11 13c.7-3 3.1-4.5 6.2-3.7 1.3-2.2 4.9-1.6 5.3 1.2.4 2.4-1.3 3.5-3.6 3.5"/><circle class="fill-black" cx="18" cy="9" r="1"/>`],
+    "零食": ["snack", `<path d="M9 8h14l2 18H7L9 8Zm2 5h10m-9 5h8"/><circle cx="13" cy="22" r="1"/><circle cx="19" cy="22" r="1"/>`],
+    "药品": ["medicine", `<path d="M9 11a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7l-7-7Zm3.5-3.5 12 12"/><path d="M8 20h9v7H8zM11 23h3m-1.5-1.5v3"/>`],
+    "保健品": ["supplement", `<path d="M10 9h12l2 5v12H8V14l2-5Zm2 0V5h8v4"/><path d="M16 16v6m-3-3h6"/>`],
+    "美妆个护": ["personal-care", `<path d="M12 10h8l3 5v11H9V15l3-5Zm1 0V6h6v4"/><path d="M12 17h8m-4-3v6"/>`],
+    "日用品": ["household", `<path d="M8 12h16l-1.5 14h-13L8 12Zm2-5h12v5H10V7Z"/><path d="M13 17h6m-6 4h6"/>`],
+    "宠物用品": ["pet", `<circle cx="10" cy="11" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="22" cy="11" r="2.5"/><path d="M16 13c-4.7 0-7.5 4.1-5 8 1.6 2.4 3.6.8 5 .8s3.4 1.6 5-.8c2.5-3.9-.3-8-5-8Z"/>`],
     "其他": ["other", `<path d="M8 12h16l-1.5 14h-13L8 12Zm-2 0h20M11 12V8h10v4"/><path d="M13 17h6m-6 4h6"/>`]
   };
   const [name, glyph] = icons[String(category || "").trim()] || icons["其他"];
@@ -62,17 +68,17 @@ function renderTriColorDashboardHtml(items, generatedAt, options, config, orient
   const summaryMarkup = expiredCount || expiringCount
     ? `${expiredCount ? `<span class="badge red">${expiredCount} 项已过期</span>` : ""}
       ${expiringCount ? `<span class="badge expiring">${expiringCount} 项快过期</span>` : ""}`
-    : `<span class="badge">食材状态正常</span>`;
+    : `<span class="badge">物品状态正常</span>`;
   const rowMarkup = rows.length
     ? rows.map((item) => `
       <article class="food ${statusColor(item)}">
         <div class="icon">${categoryIcon(item.category)}</div>
         <div class="name">${htmlEscape(item.name)}</div>
-        <div class="meta">${htmlEscape(item.category)}${item.quantityText ? ` / ${htmlEscape(item.quantityText)}` : ""}</div>
+        <div class="meta">${[item.category, item.location, item.quantityText].filter(Boolean).map(htmlEscape).join(" / ")}</div>
         <div class="days">${htmlEscape(statusLabel(item))}</div>
         <div class="bar"><span style="width:${progressWidth(item)}%"></span></div>
       </article>`).join("")
-    : `<div class="empty">还没有食材<br><small>请在手机页面添加</small></div>`;
+    : `<div class="empty">还没有物品<br><small>请在手机页面添加</small></div>`;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -149,17 +155,17 @@ function renderDashboardHtml(items, generatedAt, options = {}) {
   const summaryMarkup = expiredCount || expiringCount
     ? `${expiredCount ? `<span class="badge red">${expiredCount} 项已过期</span>` : ""}
       ${expiringCount ? `<span class="badge yellow">${expiringCount} 项快过期</span>` : ""}`
-    : `<span class="badge">食材状态正常</span>`;
+    : `<span class="badge">物品状态正常</span>`;
   const rowMarkup = rows.length
     ? rows.map((item) => `
       <article class="food ${statusColor(item)}">
         <div class="icon">${categoryIcon(item.category)}</div>
         <div class="name">${htmlEscape(item.name)}</div>
-        <div class="meta">${htmlEscape(item.category)}${item.quantityText ? ` / ${htmlEscape(item.quantityText)}` : ""}　到期 ${htmlEscape(item.expiresOn)}</div>
+        <div class="meta">${[item.category, item.location, item.quantityText].filter(Boolean).map(htmlEscape).join(" / ")}　到期 ${htmlEscape(item.expiresOn)}</div>
         <div class="days">${htmlEscape(statusLabel(item))}</div>
         <div class="bar"><span style="width:${progressWidth(item)}%"></span></div>
       </article>`).join("")
-    : `<div class="empty">还没有食材<br><small>请在手机页面添加食材信息</small></div>`;
+    : `<div class="empty">还没有物品<br><small>请在手机页面添加物品信息</small></div>`;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -210,7 +216,7 @@ function renderDashboardHtml(items, generatedAt, options = {}) {
     </header>
     <section class="summary">
       ${summaryMarkup}
-      <span>全部食材 ${items.length} 项</span>
+      <span>全部物品 ${items.length} 项</span>
     </section>
     <section class="list">${rowMarkup}</section>
     <footer><span>红色：已过期　黄色：3 天内到期</span><span>${htmlEscape(config.id)} / ${canvasWidth} x ${canvasHeight} ${isPortrait ? "竖屏" : "横屏"} / 四色</span></footer>

@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260717-2"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260717-3"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -92,13 +92,13 @@ test("overview removes its embedded assistant and exposes a global quick assista
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.doesNotMatch(html, /id="overviewAgentForm"|id="overviewAgentResult"|data-agent-example=/);
   assert.match(html, /class="link welcome-manual-add"/);
-  assert.match(html, /data-quick-agent-prompt="冰箱里有哪些三天内到期的食材？"/);
+  assert.match(html, /data-quick-agent-prompt="家里有哪些三天内到期的物品？"/);
   assert.match(html, /data-quick-agent-prompt="根据冰箱现有食材，今天可以做什么菜？"/);
   assert.equal((html.match(/data-quick-agent-prompt=/g) || []).length, 6);
   assert.match(html, />哪些已经过期<\/button>/);
-  assert.match(html, />这周先吃什么<\/button>/);
+  assert.match(html, />这周先处理什么<\/button>/);
   assert.match(html, />推荐消耗菜谱<\/button>/);
-  assert.match(html, />记录刚买食材<\/button>/);
+  assert.match(html, />记录新物品<\/button>/);
   assert.match(css, /\.overview-agent-shortcuts \{ display: flex; flex-wrap: wrap;/);
   assert.match(app, /shortcut\.dataset\.quickAgentPrompt/);
   assert.match(app, /form\.requestSubmit\(\)/);
@@ -154,6 +154,7 @@ test("phone and tablet presentation mode offers rich status, fullscreen and wake
   assert.match(app, /Promise\.all\(\[loadFoods\(\), loadActivities\(\)\]\)/);
   assert.match(app, /document\.addEventListener\("visibilitychange",[\s\S]*refreshPresentationFoods\(\)/);
   assert.match(css, /\.ambient-next-card \{[\s\S]*background: #f3dca9 !important;[\s\S]*color: #513b17;/);
+  assert.match(css, /max-height: 420px\)[\s\S]*\.ambient-food:nth-child\(n\+3\) \{ display: none; \}/);
   assert.match(app, /document\.body\.classList\.toggle\("presentation-view-active", target === "display"\)/);
   assert.match(app, /data-display-handle="\$\{item\.id\}">快速处理<\/button>/);
   assert.match(app, /title: item \? `确认已处理“\$\{item\.name\}”？`/);
@@ -167,6 +168,8 @@ test("food management uses grouped compact rows with expandable and batch action
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
   assert.match(html, /id="foodStatusFilter"/);
+  assert.match(html, /id="foodSearch"[^>]*placeholder="搜索名称、分类或地点"/);
+  assert.match(html, /id="foodLocationFilter"/);
   assert.match(html, /id="foodSortOrder"/);
   assert.match(html, /id="foodStatusMenu"[\s\S]*role="listbox"/);
   assert.match(html, /data-food-list-type="sort"/);
@@ -182,12 +185,17 @@ test("food management uses grouped compact rows with expandable and batch action
   assert.match(app, /operation: "update_expiry"/);
   assert.match(css, /\.food-list-row/);
   assert.match(css, /\.food-filter-menu button\[aria-selected="true"\]/);
-  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.food-list-tools \{ width: 100%; display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /min-height: 68px/);
   assert.match(css, /bottom: calc\(82px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(server, /url\.pathname === "\/api\/foods\/batch"/);
   assert.match(server, /foodService\.deleteFoodItems/);
   assert.match(server, /foodService\.updateFoodItems/);
+  assert.match(app, /state\.foodList\.location/);
+  assert.match(app, /\[item\.name, item\.category, item\.location, item\.quantityText\]/);
+  assert.match(app, /days <= 36500/);
+  assert.match(html, /name="location"[^>]*list="foodLocationSuggestions"/);
+  assert.match(app, /\["药品", "💊"\]/);
 });
 
 test("conversation history provides an owner-scoped delete interaction", () => {
@@ -195,7 +203,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260717-2/);
+  assert.match(html, /styles\.css\?v=20260717-3/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
@@ -209,7 +217,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("global quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260717-2/);
+  assert.match(html, /app\.js\?v=20260717-3/);
   assert.match(app, /const QUICK_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureQuickConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
@@ -309,7 +317,7 @@ test("agent markdown tables stay inside assistant surfaces and scroll internally
 
 test("pending actions show details before execution and block duplicate clicks", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(app, /确认删除以下.*项食材/);
+  assert.match(app, /确认删除以下.*项物品/);
   assert.match(app, /确认后才会执行/);
   assert.match(app, /card\?\.dataset\.processing === "true"/);
   assert.match(app, /正在执行并生成回复/);

@@ -33,18 +33,21 @@ test("food search filters by keyword, category, status and expiration range with
   const db = createTestDatabase();
   const foods = createFoodService({ db, timezone: "Asia/Shanghai" });
   const today = localDateKey("Asia/Shanghai");
-  foods.createFoodItem(1, { name: "低温牛奶", category: "乳品", quantityText: "1 盒", expiresOn: addDays(today, -2) });
-  foods.createFoodItem(1, { name: "酸奶", category: "乳品", quantityText: "2 杯", expiresOn: addDays(today, 1) });
-  foods.createFoodItem(1, { name: "苹果", category: "水果", quantityText: "3 个", expiresOn: addDays(today, 7) });
+  foods.createFoodItem(1, { name: "低温牛奶", category: "乳品", quantityText: "1 盒", location: "冰箱冷藏层", expiresOn: addDays(today, -2) });
+  foods.createFoodItem(1, { name: "酸奶", category: "乳品", quantityText: "2 杯", location: "冰箱冷藏层", expiresOn: addDays(today, 1) });
+  foods.createFoodItem(1, { name: "苹果", category: "水果", quantityText: "3 个", location: "餐边柜", expiresOn: addDays(today, 7) });
 
   assert.deepEqual(foods.searchFoodItems(1, { keyword: "奶" }).items.map((item) => item.name), ["低温牛奶", "酸奶"]);
   assert.deepEqual(foods.searchFoodItems(1, { category: "水果" }).items.map((item) => item.name), ["苹果"]);
+  assert.deepEqual(foods.searchFoodItems(1, { keyword: "餐边" }).items.map((item) => item.name), ["苹果"]);
+  assert.deepEqual(foods.searchFoodItems(1, { location: "冰箱冷藏层" }).items.map((item) => item.name), ["低温牛奶", "酸奶"]);
   assert.deepEqual(foods.searchFoodItems(1, { status: "expired" }).items.map((item) => item.name), ["低温牛奶"]);
   assert.deepEqual(foods.searchFoodItems(1, { expiresFrom: today, expiresTo: addDays(today, 3) }).items.map((item) => item.name), ["酸奶"]);
   assert.deepEqual(foods.searchFoodItems(1, { limit: 1, offset: 1 }), {
     items: [foods.getFoodItem(1, 2)], total: 3, offset: 1, limit: 1, hasMore: true
   });
   assert.throws(() => foods.searchFoodItems(1, { expiresFrom: addDays(today, 1), expiresTo: today }), /must not be after/);
+  assert.throws(() => foods.searchFoodItems(1, { location: "位置".repeat(21) }), /at most 40/);
 });
 
 test("batch food CRUD validates the whole batch before an atomic write", () => {
@@ -58,6 +61,7 @@ test("batch food CRUD validates the whole batch before an atomic write", () => {
   const ids = created.map((result) => result.item.id);
   const updated = foods.updateFoodItems(1, ids.map((id, index) => ({ id, patch: { quantityText: `${index + 1} 份` } })));
   assert.deepEqual(updated.map((result) => result.item.quantityText), ["1 份", "2 份"]);
+  assert.equal(foods.updateFoodItem(1, ids[0], { location: "零食柜" }).location, "零食柜");
 
   assert.throws(() => foods.updateFoodItems(1, [
     { id: ids[0], patch: { name: "不应保存" } },

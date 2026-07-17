@@ -54,7 +54,7 @@ test("activity pagination uses a stable descending id cursor", () => {
       householdId: 1,
       actorUserId: 1,
       type: "food_created",
-      title: "添加了食材",
+      title: "添加了物品",
       detail: `食材 ${index}`
     });
   }

@@ -11,13 +11,13 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20260717-2">
+  <link rel="stylesheet" href="/styles.css?v=20260717-3">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#overview" aria-label="鲜知贴首页">
       <span class="brand-mark">鲜</span>
-      <span><strong>鲜知贴</strong><small>冰箱鲜度工作台</small></span>
+      <span><strong>鲜知贴</strong><small>家庭有效期工作台</small></span>
     </a>
     <nav id="mainNav" class="nav hidden" aria-label="主导航">
       <button type="button" class="active" data-view-target="overview" aria-current="page">
@@ -26,7 +26,7 @@
       </button>
       <button type="button" data-view-target="foods">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c4.4 0 8-3.6 8-8 0-3.9-2.8-7.2-6.6-7.9L12 2 10.6 5.1C6.8 5.8 4 9.1 4 13c0 4.4 3.6 8 8 8Zm-2.5-9.5c1.5 0 2.5 1 2.5 2.5 0-1.5 1-2.5 2.5-2.5-1.5 0-2.5-1-2.5-2.5 0 1.5-1 2.5-2.5 2.5Z"/></svg>
-        <span>食材</span>
+        <span>物品</span>
       </button>
       <button type="button" data-view-target="devices">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 3v10h10V6H7Zm4 12v1h2v-1h-2Z"/></svg>
@@ -51,8 +51,8 @@
     <section id="loginPanel" class="login-layout">
       <div class="login-intro">
         <p class="eyebrow">四色墨水屏 · 到期提醒</p>
-        <h1>让冰箱里的新鲜<br>一眼可见</h1>
-        <p>管理存放时间，按紧急程度自动生成低功耗墨水屏画面。</p>
+        <h1>让家里的有效期<br>一眼可见</h1>
+        <p>管理物品、地点和到期时间，按紧急程度自动生成低功耗墨水屏画面。</p>
       </div>
       <section class="panel login-card">
         <div class="auth-switch" role="tablist" aria-label="账号入口">
@@ -80,24 +80,24 @@
         <div class="bento overview-grid">
           <article class="tile welcome">
             <div class="welcome-head">
-              <p class="eyebrow">今日冰箱状态</p>
+              <p class="eyebrow">今日物品状态</p>
               <button class="display-launch welcome-display-launch" type="button" data-view-target="display" data-start-display>全屏显示</button>
             </div>
             <h1>你好，<span id="welcomeUser">admin</span></h1>
             <p id="todayText" class="muted"></p>
             <div class="overview-agent-shortcuts" aria-label="助手快捷提问">
-              <button type="button" data-quick-agent-prompt="冰箱里有哪些三天内到期的食材？" disabled><span>⌕</span>查询三天内到期</button>
+              <button type="button" data-quick-agent-prompt="家里有哪些三天内到期的物品？" disabled><span>⌕</span>查询三天内到期</button>
               <button type="button" data-quick-agent-prompt="根据冰箱现有食材，今天可以做什么菜？" disabled><span>⌁</span>今天吃什么</button>
-              <button type="button" data-quick-agent-prompt="冰箱里有哪些已经过期的食材？" disabled><span>!</span>哪些已经过期</button>
-              <button type="button" data-quick-agent-prompt="根据到期时间，帮我安排这周优先吃哪些食材？" disabled><span>↗</span>这周先吃什么</button>
+              <button type="button" data-quick-agent-prompt="家里有哪些已经过期的物品？" disabled><span>!</span>哪些已经过期</button>
+              <button type="button" data-quick-agent-prompt="根据到期时间，帮我安排这周优先处理哪些物品？" disabled><span>↗</span>这周先处理什么</button>
               <button type="button" data-quick-agent-prompt="用冰箱里快到期的食材推荐一道菜，并告诉我简单做法。" disabled><span>⌁</span>推荐消耗菜谱</button>
-              <button type="button" data-quick-agent-prompt="我刚买了一些食材，帮我记录到冰箱里。" disabled><span>＋</span>记录刚买食材</button>
+              <button type="button" data-quick-agent-prompt="我刚买了一些物品，帮我记录名称、地点和有效期。" disabled><span>＋</span>记录新物品</button>
             </div>
-            <button class="link welcome-manual-add" type="button" data-view-target="foods" data-new-food>手动添加食材</button>
+            <button class="link welcome-manual-add" type="button" data-view-target="foods" data-new-food>手动添加物品</button>
           </article>
-          <article class="tile stat total"><span>全部食材</span><strong id="totalCount">0</strong><small>项记录</small></article>
+          <article class="tile stat total"><span>全部物品</span><strong id="totalCount">0</strong><small>项记录</small></article>
           <article class="tile stat danger"><span>已经过期</span><strong id="expiredCount">0</strong><small>需要处理</small></article>
-          <article class="tile stat warning"><span>三天内到期</span><strong id="expiringCount">0</strong><small>优先食用</small></article>
+          <article class="tile stat warning"><span>三天内到期</span><strong id="expiringCount">0</strong><small>优先处理</small></article>
           <article class="tile urgent">
             <div class="tile-head">
               <div><p class="eyebrow">优先处理</p><h2>最近到期</h2></div>
@@ -139,7 +139,7 @@
               <span class="activity-heading-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 11a2 2 0 0 0 4 0h-4Z"/></svg>
               </span>
-              <div><h2>操作信息流</h2><p>家庭成员对食材、成员和设备的操作会显示在这里。</p></div>
+              <div><h2>操作信息流</h2><p>家庭成员对物品、成员和设备的操作会显示在这里。</p></div>
             </div>
             <span id="activityCount" class="pill">0 条动态</span>
           </header>
@@ -152,7 +152,7 @@
           <header class="ambient-header">
             <div class="ambient-brand">
               <span class="ambient-brand-mark">鲜</span>
-              <span><strong>鲜知贴</strong><small id="displayHouseholdName">家庭冰箱</small></span>
+              <span><strong>鲜知贴</strong><small id="displayHouseholdName">家庭物品</small></span>
             </div>
             <div class="ambient-clock" aria-live="off">
               <strong id="displayTime">--:--</strong>
@@ -168,15 +168,15 @@
           <main class="ambient-grid">
             <section class="ambient-hero">
               <p class="ambient-kicker">今日鲜度简报</p>
-              <h1 id="displayHeadline">冰箱状态一目了然</h1>
-              <p id="displaySummary">正在整理今天的食材状态。</p>
+              <h1 id="displayHeadline">物品状态一目了然</h1>
+              <p id="displaySummary">正在整理今天的物品状态。</p>
               <div class="ambient-metrics">
-                <article><span>全部食材</span><strong id="displayTotalCount">0</strong><small>项</small></article>
+                <article><span>全部物品</span><strong id="displayTotalCount">0</strong><small>项</small></article>
                 <article class="expired"><span>已经过期</span><strong id="displayExpiredCount">0</strong><small>项</small></article>
                 <article class="expiring"><span>三天内</span><strong id="displayExpiringCount">0</strong><small>项</small></article>
               </div>
               <div class="ambient-freshness">
-                <div><span>整体新鲜度</span><strong id="displayFreshnessText">--</strong></div>
+                <div><span>整体有效状态</span><strong id="displayFreshnessText">--</strong></div>
                 <div class="ambient-freshness-track" aria-hidden="true"><span id="displayFreshnessBar"></span></div>
               </div>
             </section>
@@ -198,30 +198,30 @@
                 <div id="displayActivities" class="ambient-activity-list"></div>
               </section>
               <section class="ambient-categories-card">
-                <div class="ambient-section-head"><div><p>库存构成</p><h2>冰箱里有什么</h2></div></div>
+                <div class="ambient-section-head"><div><p>分类构成</p><h2>家里有什么</h2></div></div>
                 <div id="displayCategories" class="ambient-categories"></div>
               </section>
               <section class="ambient-next-card">
                 <span>下一项提醒</span>
-                <strong id="displayNextFood">暂无食材</strong>
-                <p id="displayNextFoodMeta">添加食材后会在这里显示提醒。</p>
+                <strong id="displayNextFood">暂无物品</strong>
+                <p id="displayNextFoodMeta">添加物品后会在这里显示提醒。</p>
               </section>
             </aside>
           </main>
 
           <footer class="ambient-footer">
-            <span><i></i>家庭食材状态会自动更新</span>
+            <span><i></i>家庭物品状态会自动更新</span>
             <small>轻触右上角可全屏展示</small>
           </footer>
         </div>
       </section>
 
-      <section class="view" data-view-panel="foods" aria-label="食材管理">
+      <section class="view" data-view-panel="foods" aria-label="物品管理">
         <div class="page-title">
-          <div><p class="eyebrow">食材管理</p><h1>维护冰箱内容</h1></div>
+          <div><p class="eyebrow">物品管理</p><h1>维护家庭有效期物品</h1></div>
           <div class="page-title-actions">
             <span id="foodCount" class="pill"></span>
-            <button class="primary add-food-action" type="button" data-new-food>添加食材</button>
+            <button class="primary add-food-action" type="button" data-new-food>添加物品</button>
           </div>
         </div>
         <div class="food-layout food-list-layout">
@@ -229,22 +229,29 @@
             <div class="food-list-head">
               <div><h2>全部记录</h2><span id="foodListSummary" class="muted">按紧急程度分组</span></div>
               <div class="food-list-tools">
+                <label class="food-search">
+                  <span class="sr-only">搜索名称、分类或地点</span>
+                  <input id="foodSearch" type="search" maxlength="100" placeholder="搜索名称、分类或地点">
+                </label>
+                <select id="foodLocationFilter" class="food-location-filter" aria-label="按地点筛选">
+                  <option value="">全部地点</option>
+                </select>
                 <div class="food-list-menu" data-food-menu="status">
                   <button id="foodStatusFilter" class="food-filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="foodStatusMenu">
                     <span data-food-menu-label>全部状态</span><span class="food-filter-chevron" aria-hidden="true"></span>
                   </button>
-                  <div id="foodStatusMenu" class="food-filter-menu hidden" role="listbox" aria-label="筛选食材">
+                  <div id="foodStatusMenu" class="food-filter-menu hidden" role="listbox" aria-label="筛选物品">
                     <button type="button" role="option" aria-selected="true" data-food-list-type="status" data-food-list-value="all">全部状态</button>
                     <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="expired">已过期</button>
                     <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="expiring">即将到期</button>
-                    <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="normal">新鲜</button>
+                    <button type="button" role="option" aria-selected="false" data-food-list-type="status" data-food-list-value="normal">状态正常</button>
                   </div>
                 </div>
                 <div class="food-list-menu" data-food-menu="sort">
                   <button id="foodSortOrder" class="food-filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="foodSortMenu">
                     <span data-food-menu-label>紧急优先</span><span class="food-filter-chevron" aria-hidden="true"></span>
                   </button>
-                  <div id="foodSortMenu" class="food-filter-menu hidden" role="listbox" aria-label="食材排序">
+                  <div id="foodSortMenu" class="food-filter-menu hidden" role="listbox" aria-label="物品排序">
                     <button type="button" role="option" aria-selected="true" data-food-list-type="sort" data-food-list-value="urgency">紧急优先</button>
                     <button type="button" role="option" aria-selected="false" data-food-list-type="sort" data-food-list-value="name">名称排序</button>
                   </div>
@@ -335,7 +342,7 @@
           </section>
           <section class="panel household-card">
             <div class="section-head"><h2 id="householdName">我的家庭</h2><span id="householdRole" class="role-pill"></span></div>
-            <p id="householdHint" class="muted">家庭成员共同管理同一份食材和屏幕内容。</p>
+            <p id="householdHint" class="muted">家庭成员共同管理同一份物品和屏幕内容。</p>
             <div id="householdMembers" class="household-members"></div>
             <div class="household-actions">
               <button id="createHouseholdInvite" class="primary" type="button">邀请家庭成员</button>
@@ -429,9 +436,9 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
         </div>
       </section>
 
-      <section class="view" data-view-panel="agent" aria-label="食材助手">
+      <section class="view" data-view-panel="agent" aria-label="物品助手">
         <div class="page-title">
-          <div><p class="eyebrow">智能管理</p><h1>食材助手</h1></div>
+          <div><p class="eyebrow">智能管理</p><h1>物品助手</h1></div>
           <button id="newConversation" class="primary" type="button">新对话</button>
         </div>
         <div class="agent-layout">
@@ -470,10 +477,10 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
           </section>
         </div>
       </section>
-      <form id="quickAgentForm" class="quick-agent hidden" aria-label="快捷食材助手">
+      <form id="quickAgentForm" class="quick-agent hidden" aria-label="快捷物品助手">
         <section id="quickAgentDialog" class="quick-agent-dialog hidden" role="dialog" aria-modal="false" aria-labelledby="quickAgentTitle">
           <header class="quick-agent-header">
-            <div><span>快捷对话</span><strong id="quickAgentTitle">食材助手</strong></div>
+            <div><span>快捷对话</span><strong id="quickAgentTitle">物品助手</strong></div>
             <div class="quick-agent-header-actions">
               <button id="quickAgentOpenFull" type="button">打开完整助手</button>
               <button id="quickAgentClose" class="quick-agent-close" type="button" aria-label="关闭快捷对话">×</button>
@@ -510,11 +517,11 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
       <section class="food-editor" role="dialog" aria-modal="true" aria-labelledby="foodEditorTitle" aria-describedby="foodEditorHint">
         <header class="food-editor-header">
           <div>
-            <p class="eyebrow">冰箱记录</p>
-            <h2 id="foodEditorTitle">添加食材</h2>
-            <p id="foodEditorHint">填写食材名称、分类和到期信息即可。</p>
+            <p class="eyebrow">家庭记录</p>
+            <h2 id="foodEditorTitle">添加物品</h2>
+            <p id="foodEditorHint">填写物品名称、分类和到期信息即可。</p>
           </div>
-          <button id="foodEditorClose" class="icon-button" type="button" aria-label="关闭食材编辑器">×</button>
+          <button id="foodEditorClose" class="icon-button" type="button" aria-label="关闭物品编辑器">×</button>
         </header>
         <form id="foodForm" class="food-editor-form" novalidate>
           <div class="food-editor-body">
@@ -523,8 +530,8 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
 
             <div class="food-basic-grid">
               <label class="field-group" for="foodName">
-                <span class="field-label">食材名称 <span class="required-mark" aria-hidden="true">*</span></span>
-                <input id="foodName" name="name" maxlength="40" autocomplete="off" placeholder="例如：牛奶" required>
+                <span class="field-label">物品名称 <span class="required-mark" aria-hidden="true">*</span></span>
+                <input id="foodName" name="name" maxlength="40" autocomplete="off" placeholder="例如：牛奶或感冒药" required>
                 <span class="field-error" data-error-for="name"></span>
               </label>
 
@@ -536,21 +543,28 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
                   <span id="selectedCategoryText">请选择分类</span>
                   <span class="select-chevron" aria-hidden="true">⌄</span>
                 </button>
-                <div id="categoryPicker" class="category-picker hidden" role="listbox" aria-label="食材分类"></div>
+                <div id="categoryPicker" class="category-picker hidden" role="listbox" aria-label="物品分类"></div>
                 <span class="field-error" data-error-for="category"></span>
               </div>
             </div>
 
-            <label class="field-group" for="foodQuantity">
-              <span class="field-label">数量说明 <span class="optional-mark">选填</span></span>
-              <input id="foodQuantity" name="quantityText" maxlength="30" autocomplete="off" placeholder="例如：1 瓶 / 200g">
-            </label>
+            <div class="food-basic-grid">
+              <label class="field-group" for="foodQuantity">
+                <span class="field-label">数量说明 <span class="optional-mark">选填</span></span>
+                <input id="foodQuantity" name="quantityText" maxlength="30" autocomplete="off" placeholder="例如：1 瓶 / 200g">
+              </label>
+              <label class="field-group" for="foodLocation">
+                <span class="field-label">存放地点 <span class="optional-mark">选填</span></span>
+                <input id="foodLocation" name="location" maxlength="40" autocomplete="off" list="foodLocationSuggestions" placeholder="例如：客厅药箱">
+                <datalist id="foodLocationSuggestions"></datalist>
+              </label>
+            </div>
 
             <fieldset class="expiry-fieldset">
               <legend>到期方式 <span class="required-mark" aria-hidden="true">*</span></legend>
               <div class="expiry-mode-switch" role="tablist" aria-label="到期方式">
                 <button id="expiryDirectTab" class="active" type="button" role="tab" aria-selected="true" aria-controls="expiryDirectPanel" data-expiry-mode="direct">直接选择日期</button>
-                <button id="expiryCalculatedTab" type="button" role="tab" aria-selected="false" aria-controls="expiryCalculatedPanel" data-expiry-mode="calculated">按保鲜天数</button>
+                <button id="expiryCalculatedTab" type="button" role="tab" aria-selected="false" aria-controls="expiryCalculatedPanel" data-expiry-mode="calculated">按有效天数</button>
               </div>
 
               <section id="expiryDirectPanel" class="expiry-panel" role="tabpanel" aria-labelledby="expiryDirectTab" data-expiry-panel="direct">
@@ -573,7 +587,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
               <section id="expiryCalculatedPanel" class="expiry-panel hidden" role="tabpanel" aria-labelledby="expiryCalculatedTab" data-expiry-panel="calculated">
                 <div class="calculated-grid">
                   <div class="field-group">
-                    <span class="field-label">购买/生产日期 <span class="required-mark" aria-hidden="true">*</span></span>
+                    <span class="field-label">起始日期 <span class="required-mark" aria-hidden="true">*</span></span>
                     <input name="startDate" type="hidden">
                     <button class="date-control" type="button" data-date-target="startDate" aria-expanded="false" aria-controls="foodCalendar">
                       <span aria-hidden="true">▣</span>
@@ -583,18 +597,18 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
                     <span class="field-error" data-error-for="startDate"></span>
                   </div>
                   <label class="field-group" for="foodShelfLife">
-                    <span class="field-label">保鲜天数 <span class="required-mark" aria-hidden="true">*</span></span>
-                    <input id="foodShelfLife" name="shelfLifeDays" type="number" inputmode="numeric" min="0" max="3650" placeholder="例如：7">
+                    <span class="field-label">有效天数 <span class="required-mark" aria-hidden="true">*</span></span>
+                    <input id="foodShelfLife" name="shelfLifeDays" type="number" inputmode="numeric" min="0" max="36500" placeholder="例如：7">
                     <span class="field-error" data-error-for="shelfLifeDays"></span>
                   </label>
                 </div>
-                <div class="shelf-life-presets" aria-label="快捷保鲜天数">
+                <div class="shelf-life-presets" aria-label="快捷有效天数">
                   <button type="button" data-shelf-life="3">3 天</button>
                   <button type="button" data-shelf-life="7">7 天</button>
                   <button type="button" data-shelf-life="14">14 天</button>
                   <button type="button" data-shelf-life="30">30 天</button>
                 </div>
-                <p id="calculatedExpiry" class="calculated-expiry">填写日期和保鲜天数后显示预计到期日</p>
+                <p id="calculatedExpiry" class="calculated-expiry">填写起始日期和有效天数后显示预计到期日</p>
               </section>
 
               <div id="foodCalendar" class="calendar-panel hidden" aria-label="日期选择器">
@@ -610,7 +624,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
           </div>
           <footer class="food-editor-actions">
             <button id="foodEditorCancel" class="dialog-cancel" type="button">取消</button>
-            <button id="saveFood" class="primary" type="submit">添加食材</button>
+            <button id="saveFood" class="primary" type="submit">添加物品</button>
           </footer>
         </form>
       </section>
@@ -630,7 +644,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
       <section class="dialog-card batch-food-date-card" role="dialog" aria-modal="true" aria-labelledby="batchFoodDateTitle" aria-describedby="batchFoodDateBody">
         <p class="dialog-eyebrow">批量修改</p>
         <h2 id="batchFoodDateTitle">设置新的到期日</h2>
-        <p id="batchFoodDateBody" class="dialog-body">所选食材将统一使用这个到期日期。</p>
+        <p id="batchFoodDateBody" class="dialog-body">所选物品将统一使用这个到期日期。</p>
         <label class="batch-food-date-field">到期日<input id="batchFoodDateInput" type="date" required></label>
         <div class="dialog-actions">
           <button id="batchFoodDateCancel" class="dialog-cancel" type="button">取消</button>
@@ -642,6 +656,6 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"</pre>
   </main>
   <script src="/vendor/markdown-it.js?v=14.3.0"></script>
   <script src="/markdown.js?v=20260711-3"></script>
-  <script src="/app.js?v=20260717-2"></script>
+  <script src="/app.js?v=20260717-3"></script>
 </body>
 </html>

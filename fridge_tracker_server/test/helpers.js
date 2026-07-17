@@ -36,6 +36,7 @@ function createTestDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
       name TEXT NOT NULL, category TEXT NOT NULL, quantity_text TEXT NOT NULL,
+      location_text TEXT NOT NULL DEFAULT '',
       start_date TEXT, shelf_life_days INTEGER, expires_on TEXT NOT NULL,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );

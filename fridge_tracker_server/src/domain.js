@@ -89,13 +89,17 @@ function normalizeFoodInput(input) {
   }
   const category = String(input.category || "其他").trim().slice(0, 20) || "其他";
   const quantityText = String(input.quantityText || "").trim().slice(0, 30);
+  const location = String(input.location || "").trim();
+  if (location.length > 40) {
+    throw new Error("location must be at most 40 characters");
+  }
   const startDate = input.startDate ? parseDate(input.startDate, "startDate") : null;
   const shelfLifeDays =
     input.shelfLifeDays === "" || input.shelfLifeDays === undefined || input.shelfLifeDays === null
       ? null
       : Number(input.shelfLifeDays);
-  if (shelfLifeDays !== null && (!Number.isInteger(shelfLifeDays) || shelfLifeDays < 0 || shelfLifeDays > 3650)) {
-    throw new Error("shelfLifeDays must be an integer from 0 to 3650");
+  if (shelfLifeDays !== null && (!Number.isInteger(shelfLifeDays) || shelfLifeDays < 0 || shelfLifeDays > 36500)) {
+    throw new Error("shelfLifeDays must be an integer from 0 to 36500");
   }
 
   let expiresOn = input.expiresOn ? parseDate(input.expiresOn, "expiresOn") : null;
@@ -106,7 +110,7 @@ function normalizeFoodInput(input) {
     expiresOn = addDays(startDate, shelfLifeDays);
   }
 
-  return { name, category, quantityText, startDate, shelfLifeDays, expiresOn };
+  return { name, category, quantityText, location, startDate, shelfLifeDays, expiresOn };
 }
 
 function decorateFood(row, todayKey) {
@@ -119,6 +123,7 @@ function decorateFood(row, todayKey) {
     name: row.name,
     category: row.category,
     quantityText: row.quantity_text || "",
+    location: row.location_text || "",
     startDate: row.start_date,
     shelfLifeDays: row.shelf_life_days,
     expiresOn: row.expires_on,
