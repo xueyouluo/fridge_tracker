@@ -3,7 +3,7 @@
 const crypto = require("node:crypto");
 const OpenAI = require("openai").default;
 const { localDateKey } = require("./domain");
-const { agentToolDefinitions: toolDefinitions } = require("./foodTools");
+const { agentToolDefinitions: toolDefinitions, canonicalToolName } = require("./foodTools");
 
 const PENDING_TTL_MS = 5 * 60 * 1000;
 
@@ -161,11 +161,12 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
 
   function executeTool(userId, conversationId, name, args, resume = null) {
     const householdId = householdIdFor(userId);
-    if (name === "list_foods") return foodService.searchFoodItems(householdId, args);
-    if (name === "get_foods") return { items: foodService.getFoodItems(householdId, args.ids) };
-    if (name === "create_foods") return { status: "executed", results: foodService.createFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
-    if (name === "update_foods") return { status: "executed", results: foodService.updateFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
-    if (name === "delete_foods") {
+    const toolName = canonicalToolName(name);
+    if (toolName === "list_items") return foodService.searchFoodItems(householdId, args);
+    if (toolName === "get_items") return { items: foodService.getFoodItems(householdId, args.ids) };
+    if (toolName === "create_items") return { status: "executed", results: foodService.createFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
+    if (toolName === "update_items") return { status: "executed", results: foodService.updateFoodItems(householdId, args.items, { actorUserId: userId, source: "agent" }) };
+    if (toolName === "delete_items") {
       const actions = (args.ids || []).map((id) => ({ operation: "delete", id }));
       foodService.validateActions(householdId, actions);
       return { pendingAction: createPendingAction(userId, conversationId, actions, resume) };
@@ -196,15 +197,15 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
 
   function instructions() {
     const today = localDateKey(timezone);
-    return `你是鲜知贴家庭有效期物品管理助手。今天是 ${today}，时区 ${timezone}。回答简洁、明确。使用 YYYY-MM-DD 展示最终日期。工具名中的 foods 为兼容旧客户端保留，实际管理全部物品。\n` +
+    return `你是鲜知贴家庭有效期物品管理助手。今天是 ${today}，时区 ${timezone}。回答简洁、明确。使用 YYYY-MM-DD 展示最终日期。使用 *_items 工具管理物品；不要调用已弃用的 *_foods 兼容别名。\n` +
       "查询、修改或删除前先列出物品并使用准确 ID；同名匹配多项时必须结合地点追问。" +
-      "调用 list_foods 时优先使用 keyword、category、location、status、expiresFrom 或 expiresTo 缩小范围；结果 hasMore 为 true 时按需使用 offset 继续查询。" +
-      `当用户表达添加、新购、刚买、采购、带回等新增语义时，只要物品名称明确且到期信息足够就直接调用 create_foods，不要先询问用户确认。对于食品，若未提供日期，把 startDate 设为今天 ${today}，根据名称、品类和常见储存条件选择偏保守且合理的 shelfLifeDays。` +
+      "调用 list_items 时优先使用 keyword、category、location、status、expiresFrom 或 expiresTo 缩小范围；结果 hasMore 为 true 时按需使用 offset 继续查询。" +
+      `当用户表达添加、新购、刚买、采购、带回等新增语义时，只要物品名称明确且到期信息足够就直接调用 create_items，不要先询问用户确认。对于食品，若未提供日期，把 startDate 设为今天 ${today}，根据名称、品类和常见储存条件选择偏保守且合理的 shelfLifeDays。` +
       "常见参考：海鲜 1 天，生鲜肉类 2 天，叶菜、菌菇、豆制品和熟食 3 天，牛奶酸奶及多数水果 7 天，鸡蛋 21 天，冷冻食品 90 天；不完全匹配时结合具体食品合理判断。" +
       "药品、保健品和其他健康相关物品没有明确到期日，或没有明确起始日期与有效天数时必须追问，绝不根据名称猜测有效期，也不提供是否可继续使用、剂量或疗效等用药判断。" +
       "用户没说品类时可根据名称推断；没说数量或地点时可以省略，不要为此追问。用户明确提供的日期、数量、地点或有效天数优先。工具成功后简要说明已添加物品、地点和到期日，并告知用户可继续对话修改。" +
-      "所有 get/create/update/delete 工具都接收 1 到 25 项；尽量把同类操作合并成一次批量调用。update_foods 只在 patch 中填写需要修改的字段；如果修改 startDate 或 shelfLifeDays 后要重新计算到期日，同时传 expiresOn: null。" +
-      "识别出准确删除对象后直接调用 delete_foods，不要先询问用户是否确认；删除确认完全由系统执行层处理，模型无需说明确认流程。" +
+      "所有 get/create/update/delete 工具都接收 1 到 25 项；尽量把同类操作合并成一次批量调用。update_items 只在 patch 中填写需要修改的字段；如果修改 startDate 或 shelfLifeDays 后要重新计算到期日，同时传 expiresOn: null。" +
+      "识别出准确删除对象后直接调用 delete_items，不要先询问用户是否确认；删除确认完全由系统执行层处理，模型无需说明确认流程。" +
       "调用工具时不要输出正在查询、正在调用、准备删除等中间过程，也不要重复展示系统确认卡已经提供的待操作清单。" +
       "不要声称操作成功，除非工具结果明确显示 status 为 executed。不要重复提交同一批变更。";
   }

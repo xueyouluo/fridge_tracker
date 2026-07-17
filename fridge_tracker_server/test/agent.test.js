@@ -18,7 +18,7 @@ test("agent food tools resolve a member account to its shared household", () => 
     foodService: foods,
     resolveHouseholdId: (userId) => db.prepare("SELECT household_id FROM household_members WHERE user_id = ?").get(userId).household_id
   });
-  agent.executeTool(2, "unused", "create_foods", { items: [{ name: "共享牛奶", expiresOn: "2026-07-20" }] });
+  agent.executeTool(2, "unused", "create_items", { items: [{ name: "共享牛奶", expiresOn: "2026-07-20" }] });
   assert.equal(foods.listFoodItems(1)[0].name, "共享牛奶");
 });
 
@@ -44,7 +44,7 @@ test("agent executes batch creates but stages batch deletes and consumes confirm
   const foods = createFoodService({ db });
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1);
-  const direct = agent.executeTool(1, conversation.id, "create_foods", {
+  const direct = agent.executeTool(1, conversation.id, "create_items", {
     items: [
       { name: "酸奶", expiresOn: "2026-07-20" },
       { name: "苹果", expiresOn: "2026-07-21" }
@@ -52,7 +52,7 @@ test("agent executes batch creates but stages batch deletes and consumes confirm
   });
   assert.equal(direct.status, "executed");
   assert.equal(direct.results[0].item.name, "酸奶");
-  const pending = agent.executeTool(1, conversation.id, "delete_foods", {
+  const pending = agent.executeTool(1, conversation.id, "delete_items", {
     ids: direct.results.map((result) => result.item.id)
   });
   assert.equal(pending.pendingAction.summary, "删除「酸奶」、删除「苹果」");
@@ -84,8 +84,8 @@ test("identical unresolved deletes reuse one pending action", () => {
   const item = foods.createFoodItem(1, { name: "牛奶", category: "乳品", quantityText: "1 瓶", expiresOn: "2026-07-12" });
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1);
-  const first = agent.executeTool(1, conversation.id, "delete_foods", { ids: [item.id] });
-  const second = agent.executeTool(1, conversation.id, "delete_foods", { ids: [item.id] });
+  const first = agent.executeTool(1, conversation.id, "delete_items", { ids: [item.id] });
+  const second = agent.executeTool(1, conversation.id, "delete_items", { ids: [item.id] });
 
   assert.equal(second.pendingAction.id, first.pendingAction.id);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM agent_pending_actions").get().count, 1);
@@ -107,7 +107,7 @@ test("conversation deletion is owner scoped and cascades messages and pending ac
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1, "要删除的对话");
   const otherConversation = agent.createConversation(2, "其他用户的对话");
-  const pending = agent.executeTool(1, conversation.id, "delete_foods", { ids: [item.id] });
+  const pending = agent.executeTool(1, conversation.id, "delete_items", { ids: [item.id] });
   db.prepare(`
     INSERT INTO agent_messages (conversation_id, role, content, metadata_json, protocol, payload_json, created_at)
     VALUES (?, 'user', '测试消息', NULL, NULL, NULL, ?)
@@ -127,7 +127,7 @@ test("calculated expiry creates execute directly", () => {
   const foods = createFoodService({ db });
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1);
-  const result = agent.executeTool(1, conversation.id, "create_foods", {
+  const result = agent.executeTool(1, conversation.id, "create_items", {
     items: [{ name: "牛奶", category: "乳品", startDate: "2026-07-12", shelfLifeDays: 7 }]
   });
 
@@ -142,7 +142,7 @@ test("agent cannot stage another user's food operation", () => {
   const item = foods.createFoodItem(2, { name: "鸡蛋", expiresOn: "2026-07-20" });
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1);
-  assert.throws(() => agent.executeTool(1, conversation.id, "delete_foods", { ids: [item.id] }), /not found/);
+  assert.throws(() => agent.executeTool(1, conversation.id, "delete_items", { ids: [item.id] }), /not found/);
 });
 
 test("agent chat tool loop executes a model-proposed single create", async () => {
@@ -152,13 +152,13 @@ test("agent chat tool loop executes a model-proposed single create", async () =>
   const client = { chat: { completions: { create: async (request) => {
     call += 1;
     if (call === 1) {
-      assert.match(request.messages[0].content, /直接调用 create_foods/);
+      assert.match(request.messages[0].content, /直接调用 create_items/);
       assert.match(request.messages[0].content, /startDate 设为今天/);
       assert.match(request.messages[0].content, /偏保守且合理的 shelfLifeDays/);
       assert.match(request.messages[0].content, /不要先询问用户确认/);
       assert.match(request.messages[0].content, /可继续对话修改/);
       return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
-        id: "call-1", type: "function", function: { name: "create_foods", arguments: JSON.stringify({ items: [{ name: "西红柿", category: "蔬菜", startDate: "2026-07-12", shelfLifeDays: 7 }] }) }
+        id: "call-1", type: "function", function: { name: "create_items", arguments: JSON.stringify({ items: [{ name: "西红柿", category: "蔬菜", startDate: "2026-07-12", shelfLifeDays: 7 }] }) }
       }] } }] };
     }
     return { choices: [{ message: { role: "assistant", content: "已添加西红柿：蔬菜，今天购买，保鲜 7 天，7 月 19 日到期。可以继续告诉我修改。" } }] };
@@ -171,7 +171,7 @@ test("agent chat tool loop executes a model-proposed single create", async () =>
   assert.equal(foods.listFoodItems(1)[0].expiresOn, "2026-07-19");
   const protocolRows = db.prepare("SELECT role, protocol, payload_json FROM agent_messages WHERE protocol IS NOT NULL ORDER BY id").all();
   assert.deepEqual(protocolRows.map((row) => [row.role, row.protocol]), [["assistant", "chat"], ["tool", "chat"]]);
-  assert.equal(JSON.parse(protocolRows[0].payload_json).tool_calls[0].function.name, "create_foods");
+  assert.equal(JSON.parse(protocolRows[0].payload_json).tool_calls[0].function.name, "create_items");
   assert.equal(JSON.parse(protocolRows[1].payload_json).tool_call_id, "call-1");
   assert.deepEqual(agent.listMessages(1, conversation.id).map((message) => message.role), ["user", "assistant"]);
 });
@@ -188,7 +188,7 @@ test("new purchases execute with inferred defaults and can be revised in convers
         id: "create-milk",
         type: "function",
         function: {
-          name: "create_foods",
+          name: "create_items",
           arguments: JSON.stringify({ items: [{ name: "牛奶", category: "乳品", quantityText: "1 盒", startDate: "2026-07-12", shelfLifeDays: 7 }] })
         }
       }] } }] };
@@ -202,7 +202,7 @@ test("new purchases execute with inferred defaults and can be revised in convers
       return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
         id: "list-milk",
         type: "function",
-        function: { name: "list_foods", arguments: JSON.stringify({ keyword: "牛奶" }) }
+          function: { name: "list_items", arguments: JSON.stringify({ keyword: "牛奶" }) }
       }] } }] };
     }
     if (call === 4) {
@@ -210,7 +210,7 @@ test("new purchases execute with inferred defaults and can be revised in convers
       return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
         id: "update-milk",
         type: "function",
-        function: { name: "update_foods", arguments: JSON.stringify({ items: [{ id: 1, patch: { shelfLifeDays: 5, expiresOn: null } }] }) }
+        function: { name: "update_items", arguments: JSON.stringify({ items: [{ id: 1, patch: { shelfLifeDays: 5, expiresOn: null } }] }) }
       }] } }] };
     }
     assert.equal(call, 5);
@@ -271,7 +271,7 @@ test("recent chat history drops leading fragments so the first history message i
   assert.equal(result.message.content, "历史顺序正常。");
 });
 
-test("agent list_foods exposes filters and returns a paginated subset", () => {
+test("agent list_items exposes filters and returns a paginated subset", () => {
   const db = createTestDatabase();
   const foods = createFoodService({ db });
   foods.createFoodItem(1, { name: "牛奶", category: "乳品", expiresOn: "2026-07-12" });
@@ -279,19 +279,19 @@ test("agent list_foods exposes filters and returns a paginated subset", () => {
   const agent = createAgentService({ db, foodService: foods });
   const conversation = agent.createConversation(1);
 
-  const result = agent.executeTool(1, conversation.id, "list_foods", { category: "乳品", limit: 1 });
+  const result = agent.executeTool(1, conversation.id, "list_items", { category: "乳品", limit: 1 });
   assert.equal(result.total, 1);
   assert.equal(result.hasMore, false);
   assert.deepEqual(result.items.map((item) => item.name), ["牛奶"]);
-  const schema = toolDefinitions.find((tool) => tool.name === "list_foods").parameters.properties;
+  const schema = toolDefinitions.find((tool) => tool.name === "list_items").parameters.properties;
   assert.deepEqual(Object.keys(schema), ["keyword", "category", "location", "status", "expiresFrom", "expiresTo", "limit", "offset"]);
 });
 
 test("agent exposes shared batch CRUD schemas and partial update rules", () => {
-  assert.deepEqual(toolDefinitions.map((tool) => tool.name), ["list_foods", "get_foods", "create_foods", "update_foods", "delete_foods"]);
-  const create = toolDefinitions.find((tool) => tool.name === "create_foods");
-  const update = toolDefinitions.find((tool) => tool.name === "update_foods");
-  const remove = toolDefinitions.find((tool) => tool.name === "delete_foods");
+  assert.deepEqual(toolDefinitions.map((tool) => tool.name), ["list_items", "get_items", "create_items", "update_items", "delete_items"]);
+  const create = toolDefinitions.find((tool) => tool.name === "create_items");
+  const update = toolDefinitions.find((tool) => tool.name === "update_items");
+  const remove = toolDefinitions.find((tool) => tool.name === "delete_items");
   assert.equal(create.parameters.properties.items.minItems, 1);
   assert.equal(create.parameters.properties.items.maxItems, 25);
   assert.ok(create.parameters.properties.items.items.properties.location);
@@ -306,6 +306,19 @@ test("agent exposes shared batch CRUD schemas and partial update rules", () => {
   assert.equal(remove.parameters.properties.ids.maxItems, 25);
 });
 
+test("agent still accepts deprecated food tool aliases without advertising them", () => {
+  const db = createTestDatabase();
+  const foods = createFoodService({ db });
+  const agent = createAgentService({ db, foodService: foods });
+  const conversation = agent.createConversation(1);
+  agent.executeTool(1, conversation.id, "create_foods", {
+    items: [{ name: "兼容测试", expiresOn: "2026-07-20" }]
+  });
+  const listed = agent.executeTool(1, conversation.id, "list_foods", { keyword: "兼容测试" });
+  assert.equal(listed.total, 1);
+  assert.equal(toolDefinitions.some((tool) => tool.name.endsWith("_foods")), false);
+});
+
 test("agent instructions treat food inference and health-item expiry differently", () => {
   const db = createTestDatabase();
   const agent = createAgentService({ db, foodService: createFoodService({ db }) });
@@ -313,6 +326,7 @@ test("agent instructions treat food inference and health-item expiry differently
   assert.match(agent.instructions(), /药品、保健品和其他健康相关物品/);
   assert.match(agent.instructions(), /绝不根据名称猜测有效期/);
   assert.match(agent.instructions(), /location/);
+  assert.match(agent.instructions(), /不要调用已弃用的 \*_foods 兼容别名/);
 });
 
 test("agent pauses at system confirmation and resumes with a tool-free reply", async () => {
@@ -323,7 +337,7 @@ test("agent pauses at system confirmation and resumes with a tool-free reply", a
   const client = { chat: { completions: { create: async (request) => {
     call += 1;
     if (call === 1) return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
-      id: "delete-1", type: "function", function: { name: "delete_foods", arguments: JSON.stringify({ ids: [item.id] }) }
+      id: "delete-1", type: "function", function: { name: "delete_items", arguments: JSON.stringify({ ids: [item.id] }) }
     }] } }] };
     assert.equal(request.tool_choice, "none");
     assert.equal(request.messages.at(-2).tool_calls[0].id, "delete-1");
@@ -364,7 +378,7 @@ test("agent uses Chat Completions and role tool for the default OpenAI runtime",
     if (call === 1) return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
       id: "delete-chat-default-1",
       type: "function",
-      function: { name: "delete_foods", arguments: JSON.stringify({ ids: [item.id] }) }
+      function: { name: "delete_items", arguments: JSON.stringify({ ids: [item.id] }) }
     }] } }] };
     assert.equal(request.tool_choice, "none");
     assert.equal(request.messages.at(-1).role, "tool");
@@ -395,7 +409,7 @@ test("agent returns food lookup failures as tool output", async () => {
   const client = { chat: { completions: { create: async (request) => {
     call += 1;
     if (call === 1) return { choices: [{ message: { role: "assistant", content: null, tool_calls: [{
-      id: "missing-1", type: "function", function: { name: "delete_foods", arguments: JSON.stringify({ ids: [999] }) }
+      id: "missing-1", type: "function", function: { name: "delete_items", arguments: JSON.stringify({ ids: [999] }) }
     }] } }] };
     assert.equal(request.messages.at(-1).role, "tool");
     assert.equal(request.messages.at(-1).tool_call_id, "missing-1");

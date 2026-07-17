@@ -29,42 +29,42 @@ const listFoodFields = {
 
 const positiveId = z.number().int().positive();
 const idBatch = z.array(positiveId).min(1).max(25);
-const inputShapes = {
-  list_foods: listFoodFields,
-  get_foods: { ids: idBatch.describe("要获取的物品 ID，1 到 25 项") },
-  create_foods: {
+const canonicalInputShapes = {
+  list_items: listFoodFields,
+  get_items: { ids: idBatch.describe("要获取的物品 ID，1 到 25 项") },
+  create_items: {
     items: z.array(z.object(foodFields)).min(1).max(25).describe("要新增的物品，1 到 25 项")
   },
-  update_foods: {
+  update_items: {
     items: z.array(z.object({
-      id: positiveId.describe("list_foods 或 get_foods 返回的准确物品 ID；不要放进 patch"),
+      id: positiveId.describe("list_items 或 get_items 返回的准确物品 ID；不要放进 patch"),
       patch: z.object(foodPatchFields).describe("部分更新对象，只填写确实要修改的字段，至少填写一项；省略的字段保持原值。直接修改到期日时填写 expiresOn；修改 startDate 或 shelfLifeDays 并要求重新计算到期日时，同时填写 expiresOn: null")
     })).min(1).max(25).describe("要修改的物品，1 到 25 项")
   },
-  delete_foods: { ids: idBatch.describe("要永久删除的物品 ID，1 到 25 项") }
+  delete_items: { ids: idBatch.describe("要永久删除的物品 ID，1 到 25 项") }
 };
 
-const toolSpecs = [
+const canonicalToolSpecs = [
   {
-    name: "list_foods",
-    description: "筛选当前家庭的有效期物品并返回 ID、存放地点、到期日和状态。兼容名称 list_foods 可用于食品、药品、日用品等全部物品；结果按到期紧急度排序并支持分页。",
+    name: "list_items",
+    description: "筛选当前家庭的有效期物品并返回 ID、存放地点、到期日和状态。适用于食品、药品、日用品等全部物品；结果按到期紧急度排序并支持分页。",
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
-    name: "get_foods",
+    name: "get_items",
     description: "按准确 ID 批量获取当前家庭的 1 到 25 项有效期物品。整批校验；任何 ID 不存在时返回错误。",
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
-    name: "create_foods",
+    name: "create_items",
     description: "批量新增 1 到 25 项有效期物品。每项提供 expiresOn，或同时提供 startDate 和 shelfLifeDays；可填写 location；整批校验并在同一事务中执行。",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
   {
-    name: "update_foods",
+    name: "update_items",
     description: [
       "按准确 ID 批量、部分更新当前家庭的 1 到 25 项有效期物品。参数格式为 items: [{ id, patch }]。",
-      "id 必须使用 list_foods 或 get_foods 返回的准确 ID，并放在 item.id；不要把 id 放进 patch。",
+      "id 必须使用 list_items 或 get_items 返回的准确 ID，并放在 item.id；不要把 id 放进 patch。",
       "patch 表示这一项要修改的字段，至少填写一个字段。只填写确实需要改变的 name、category、quantityText、location、startDate、shelfLifeDays 或 expiresOn；省略的字段保持原值，不要为了补全对象而复制未修改字段。",
       '普通字段示例：{"items":[{"id":12,"patch":{"quantityText":"2 盒","category":"乳品"}}]}。',
       '直接修改到期日示例：{"items":[{"id":12,"patch":{"expiresOn":"2026-07-30"}}]}。',
@@ -74,11 +74,35 @@ const toolSpecs = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   {
-    name: "delete_foods",
+    name: "delete_items",
     description: "按准确 ID 批量永久删除当前家庭的 1 到 25 项有效期物品。整批校验并在同一事务中执行。",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   }
-].map((tool) => ({ ...tool, inputSchema: inputShapes[tool.name] }));
+].map((tool) => ({ ...tool, inputSchema: canonicalInputShapes[tool.name] }));
+
+const legacyToolAliases = Object.freeze({
+  list_foods: "list_items",
+  get_foods: "get_items",
+  create_foods: "create_items",
+  update_foods: "update_items",
+  delete_foods: "delete_items"
+});
+
+function canonicalToolName(name) {
+  return legacyToolAliases[name] || name;
+}
+
+const legacyToolSpecs = Object.entries(legacyToolAliases).map(([name, canonicalName]) => {
+  const canonical = canonicalToolSpecs.find((tool) => tool.name === canonicalName);
+  return {
+    ...canonical,
+    name,
+    description: `已弃用的兼容别名；请改用 ${canonicalName}。${canonical.description}`
+  };
+});
+
+const toolSpecs = [...canonicalToolSpecs, ...legacyToolSpecs];
+const inputShapes = Object.fromEntries(toolSpecs.map((tool) => [tool.name, tool.inputSchema]));
 
 function jsonParameters(inputSchema) {
   const schema = z.toJSONSchema(z.object(inputSchema));
@@ -86,10 +110,10 @@ function jsonParameters(inputSchema) {
   return schema;
 }
 
-const agentToolDefinitions = toolSpecs.map(({ name, description, inputSchema }) => ({
+const agentToolDefinitions = canonicalToolSpecs.map(({ name, description, inputSchema }) => ({
   name,
   description,
   parameters: jsonParameters(inputSchema)
 }));
 
-module.exports = { agentToolDefinitions, inputShapes, toolSpecs };
+module.exports = { agentToolDefinitions, canonicalToolName, inputShapes, legacyToolAliases, toolSpecs };

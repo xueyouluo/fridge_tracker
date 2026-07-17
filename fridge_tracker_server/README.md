@@ -108,7 +108,7 @@ bearer_token_env_var = "XIANZHITIE_MCP_TOKEN"
 export XIANZHITIE_MCP_TOKEN='xzt_...'
 ```
 
-MCP 与内置 Agent 共用 `list_foods`、`get_foods`、`create_foods`、`update_foods` 和 `delete_foods` 五个批量工具；名称中的 `foods` 为兼容旧客户端保留，实际可管理食品、药品、日用品等全部有效期物品。`list_foods` 支持名称、分类、数量、地点模糊搜索和地点精确筛选；写入会先整批校验并在同一事务中执行。令牌只能访问其所属家庭的数据。
+MCP 与内置 Agent 使用 `list_items`、`get_items`、`create_items`、`update_items` 和 `delete_items` 五个通用物品工具，可管理食品、药品、日用品等全部有效期物品。旧的 `*_foods` 工具仅作为已弃用兼容别名保留。`list_items` 支持名称、分类、数量、地点模糊搜索和地点精确筛选；写入会先整批校验并在同一事务中执行。令牌只能访问其所属家庭的数据。
 
 `adminLogin`、`adminEmail` 与 `adminPassword` 是本地管理员账号的初始
 配置。修改 `adminPassword` 并重启服务后，服务会更新管理员账号的密码
