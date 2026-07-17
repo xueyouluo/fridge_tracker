@@ -176,6 +176,48 @@ test("agent chat tool loop executes a model-proposed single create", async () =>
   assert.deepEqual(agent.listMessages(1, conversation.id).map((message) => message.role), ["user", "assistant"]);
 });
 
+test("agent streams text, collapsible think content and tool status events", async () => {
+  const db = createTestDatabase();
+  const foods = createFoodService({ db });
+  let call = 0;
+  async function* streamChunks(deltas) {
+    for (const delta of deltas) yield { choices: [{ delta }] };
+  }
+  const client = { chat: { completions: { create: async (request) => {
+    call += 1;
+    assert.equal(request.stream, true);
+    if (call === 1) {
+      return streamChunks([
+        { role: "assistant" },
+        { tool_calls: [{ index: 0, id: "call-", type: "function", function: { name: "create_", arguments: "{\"items\":[" } }] },
+        { tool_calls: [{ index: 0, id: "1", function: { name: "items", arguments: "{\"name\":\"牛奶\",\"expiresOn\":\"2026-07-20\"}]}" } }] }
+      ]);
+    }
+    assert.equal(request.messages.at(-1).role, "tool");
+    return streamChunks([
+      { reasoning_content: "显式推理；" },
+      { content: "<thi" },
+      { content: "nk>检查工具结果" },
+      { content: "</think>已添加" },
+      { content: "牛奶。" }
+    ]);
+  } } } };
+  const events = [];
+  const agent = createAgentService({ db, foodService: foods, client, model: "test" });
+  const conversation = agent.createConversation(1);
+
+  const result = await agent.sendMessageStream(1, conversation.id, "添加牛奶", (event) => events.push(event));
+
+  assert.equal(call, 2);
+  assert.equal(result.message.content, "已添加牛奶。");
+  assert.equal(result.message.metadata.reasoning, "显式推理；检查工具结果");
+  assert.equal(foods.listFoodItems(1)[0].name, "牛奶");
+  assert.deepEqual(events.filter((event) => event.type === "tool_start").map((event) => event.label), ["新增物品"]);
+  assert.deepEqual(events.filter((event) => event.type === "tool_end").map((event) => event.status), ["completed"]);
+  assert.equal(events.filter((event) => event.type === "reasoning_delta").map((event) => event.delta).join(""), "显式推理；检查工具结果");
+  assert.equal(events.filter((event) => event.type === "text_delta").map((event) => event.delta).join(""), "已添加牛奶。");
+});
+
 test("new purchases execute with inferred defaults and can be revised in conversation", async () => {
   const db = createTestDatabase();
   const foods = createFoodService({ db });

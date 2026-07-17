@@ -6,6 +6,104 @@ const { localDateKey } = require("./domain");
 const { agentToolDefinitions: toolDefinitions } = require("./foodTools");
 
 const PENDING_TTL_MS = 5 * 60 * 1000;
+const THINK_OPEN_TAG = "<think>";
+const THINK_CLOSE_TAG = "</think>";
+
+function trailingTagPrefixLength(value, tag) {
+  const lower = value.toLowerCase();
+  for (let length = Math.min(tag.length - 1, value.length); length > 0; length -= 1) {
+    if (tag.startsWith(lower.slice(-length))) return length;
+  }
+  return 0;
+}
+
+function createThinkStreamParser(onDelta) {
+  let buffer = "";
+  let mode = "text";
+
+  function flush(final = false) {
+    while (buffer) {
+      const tag = mode === "text" ? THINK_OPEN_TAG : THINK_CLOSE_TAG;
+      const index = buffer.toLowerCase().indexOf(tag);
+      if (index !== -1) {
+        if (index > 0) onDelta(mode, buffer.slice(0, index));
+        buffer = buffer.slice(index + tag.length);
+        mode = mode === "text" ? "reasoning" : "text";
+        continue;
+      }
+      const keep = final ? 0 : trailingTagPrefixLength(buffer, tag);
+      const ready = buffer.slice(0, buffer.length - keep);
+      if (ready) onDelta(mode, ready);
+      buffer = buffer.slice(buffer.length - keep);
+      break;
+    }
+  }
+
+  return {
+    write(value) {
+      buffer += String(value || "");
+      flush(false);
+    },
+    end() {
+      flush(true);
+    }
+  };
+}
+
+function toolDisplayName(name) {
+  const labels = {
+    list_items: "查询物品",
+    get_items: "获取物品详情",
+    create_items: "新增物品",
+    update_items: "修改物品",
+    delete_items: "删除物品"
+  };
+  return labels[name] || "处理物品";
+}
+
+async function streamedChatCompletion(ai, request, emit) {
+  const completion = await ai.chat.completions.create({ ...request, stream: true });
+  const toolCalls = [];
+  let text = "";
+  let reasoning = "";
+  const parser = createThinkStreamParser((type, delta) => {
+    if (!delta) return;
+    if (type === "reasoning") {
+      reasoning += delta;
+      emit({ type: "reasoning_delta", delta });
+      return;
+    }
+    text += delta;
+    emit({ type: "text_delta", delta });
+  });
+
+  for await (const chunk of completion) {
+    const delta = chunk.choices?.[0]?.delta;
+    if (!delta) continue;
+    const reasoningDelta = typeof delta.reasoning_content === "string"
+      ? delta.reasoning_content
+      : typeof delta.reasoning === "string" ? delta.reasoning : "";
+    if (reasoningDelta) {
+      reasoning += reasoningDelta;
+      emit({ type: "reasoning_delta", delta: reasoningDelta });
+    }
+    if (typeof delta.content === "string") parser.write(delta.content);
+    for (const partial of delta.tool_calls || []) {
+      const index = Number.isInteger(partial.index) ? partial.index : 0;
+      toolCalls[index] ||= { id: "", type: "function", function: { name: "", arguments: "" } };
+      if (partial.id) toolCalls[index].id += partial.id;
+      if (partial.type) toolCalls[index].type = partial.type;
+      if (partial.function?.name) toolCalls[index].function.name += partial.function.name;
+      if (partial.function?.arguments) toolCalls[index].function.arguments += partial.function.arguments;
+    }
+  }
+  parser.end();
+
+  const message = { role: "assistant", content: text || null };
+  const completedCalls = toolCalls.filter(Boolean);
+  if (completedCalls.length) message.tool_calls = completedCalls;
+  return { message, reasoning };
+}
 
 function publicConversation(row) {
   return { id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at };
@@ -270,6 +368,55 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
     throw new Error("agent exceeded the tool-call limit");
   }
 
+  async function runChatStream(userId, conversationId, history, ai, activeModel, emit) {
+    const messages = [{ role: "system", content: instructions() }, ...history];
+    const events = [];
+    const reasoningParts = [];
+    for (let round = 0; round < 6; round += 1) {
+      emit({ type: "status", status: "thinking", label: round === 0 ? "正在思考…" : "正在整理工具结果…" });
+      const streamed = await streamedChatCompletion(ai, {
+        model: activeModel,
+        messages,
+        tools: toolDefinitions.map((tool) => ({ type: "function", function: tool })),
+        tool_choice: "auto",
+        parallel_tool_calls: false
+      }, emit);
+      const choice = streamed.message;
+      if (streamed.reasoning.trim()) reasoningParts.push(streamed.reasoning.trim());
+      messages.push(choice);
+      const calls = (choice.tool_calls || []).map((call) => ({
+        id: call.id,
+        name: call.function.name,
+        arguments: JSON.parse(call.function.arguments || "{}")
+      }));
+      if (!calls.length) {
+        const text = choice.content || "操作已处理。";
+        if (!choice.content) emit({ type: "text_delta", delta: text });
+        return { text, events, reasoning: reasoningParts.join("\n\n") };
+      }
+      saveProtocolMessage(conversationId, "chat", "assistant", choice);
+      for (const call of calls) {
+        emit({ type: "tool_start", id: call.id, name: call.name, label: toolDisplayName(call.name) });
+      }
+      const handled = processToolCalls(userId, conversationId, calls, () => ({ protocol: "chat", messages }));
+      events.push(...handled.map((call) => call.result));
+      for (const call of handled) {
+        const status = call.result.pendingAction ? "waiting_confirmation" : call.result.status === "error" ? "error" : "completed";
+        emit({ type: "tool_end", id: call.id, name: call.name, label: toolDisplayName(call.name), status });
+        emit({ type: "agent_event", event: call.result });
+      }
+      if (handled.some((call) => call.result.pendingAction)) {
+        return { text: "", events, reasoning: reasoningParts.join("\n\n") };
+      }
+      for (const call of handled) {
+        const toolMessage = { role: "tool", tool_call_id: call.id, content: JSON.stringify(call.result) };
+        saveProtocolMessage(conversationId, "chat", "tool", toolMessage);
+        messages.push(toolMessage);
+      }
+    }
+    throw new Error("agent exceeded the tool-call limit");
+  }
+
   function clientFor(runtime) {
     return runtime.client || (clientFactory
       ? clientFactory(runtime)
@@ -340,6 +487,28 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
     return { message, events: result.events, mode: runtime.mode || "system", ...(quota ? { quota } : {}) };
   }
 
+  async function sendMessageStream(userId, conversationId, content, emit = () => {}) {
+    const runtime = runtimeFor(userId);
+    if (!runtime) {
+      const error = new Error("Agent 未配置，请填写个人 API Key 或联系管理员配置系统 Agent");
+      error.statusCode = 503;
+      throw error;
+    }
+    const ai = clientFor(runtime);
+    const conversation = requireConversation(userId, conversationId);
+    const text = String(content || "").trim().slice(0, 4000);
+    if (!text) throw new Error("message is required");
+    const quota = runtime.mode === "personal"
+      ? (getQuota ? getQuota(userId) : null)
+      : consumeInput ? consumeInput(userId) : (getQuota ? getQuota(userId) : null);
+    saveMessage(conversationId, "user", text);
+    if (conversation.title === "新对话") db.prepare("UPDATE agent_conversations SET title = ? WHERE id = ?").run(text.slice(0, 30), conversationId);
+    const result = await runChatStream(userId, conversationId, recentHistory(conversationId), ai, runtime.model, emit);
+    const metadata = { events: result.events, ...(result.reasoning ? { reasoning: result.reasoning } : {}) };
+    const message = saveMessage(conversationId, "assistant", result.text, metadata);
+    return { message, events: result.events, mode: runtime.mode || "system", ...(quota ? { quota } : {}) };
+  }
+
   async function resolvePending(userId, id, confirm) {
     const now = new Date().toISOString();
     const row = db.prepare("SELECT * FROM agent_pending_actions WHERE id = ? AND user_id = ?").get(String(id), userId);
@@ -384,6 +553,7 @@ function createAgentService({ db, foodService, timezone = "Asia/Shanghai", resol
     deleteConversation,
     listMessages,
     sendMessage,
+    sendMessageStream,
     confirmAction: (userId, id) => resolvePending(userId, id, true),
     cancelAction: (userId, id) => resolvePending(userId, id, false),
     instructions,

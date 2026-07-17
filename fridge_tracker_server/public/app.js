@@ -91,6 +91,46 @@ async function api(path, options = {}) {
   return body;
 }
 
+async function apiStream(path, options = {}, onEvent = () => {}) {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options
+  });
+  if (!response.ok) {
+    const body = response.headers.get("content-type")?.includes("json") ? await response.json() : null;
+    const error = new Error(body?.error || `请求失败 (${response.status})`);
+    error.code = body?.code || "";
+    error.status = response.status;
+    throw error;
+  }
+  if (!response.body) throw new Error("当前浏览器不支持流式响应");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const handleEvent = (event) => {
+    if (event.type === "error") {
+      const error = new Error(event.error || "Agent 请求失败");
+      error.code = event.code || "";
+      error.status = event.status || 500;
+      throw error;
+    }
+    onEvent(event);
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      handleEvent(JSON.parse(line));
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) handleEvent(JSON.parse(buffer));
+}
+
 function toast(text) {
   message.textContent = text;
   message.classList.add("show");
@@ -1209,11 +1249,13 @@ async function loadConversations() {
   state.agentQuota = result.quota;
   state.conversations = result.conversations;
   const available = isAgentAvailable();
-  $("#agentStatus").textContent = result.mode === "personal"
+  const agentStatusText = result.mode === "personal"
     ? "个人 Agent 已连接 · 不消耗系统额度"
     : result.mode === "system"
       ? result.quota.remaining > 0 ? `系统 Agent 已连接 · 剩余 ${result.quota.remaining} 次` : "系统输入额度已用完"
       : "Agent 未配置";
+  $("#agentStatus").textContent = agentStatusText;
+  $("#agentStatus").title = agentStatusText;
   $("#quickAgentAvailability").textContent = result.mode === "system" && result.quota.remaining <= 0
     ? "系统输入额度已用完，可填写个人 API Key 或联系管理员增加额度。"
     : result.mode === "unconfigured"
@@ -1244,7 +1286,7 @@ function renderConversations() {
         <strong>${escapeHtml(conversation.title)}</strong><small>${escapeHtml(formatTime(conversation.updatedAt))}</small>
       </button>
       <button type="button" class="conversation-delete" data-delete-conversation="${escapeHtml(conversation.id)}" aria-label="删除对话：${escapeHtml(conversation.title)}">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>
+        <span aria-hidden="true">×</span>
       </button>
     </div>
   `).join("") : `<p class="muted">点击“新对话”开始。</p>`;
@@ -1287,15 +1329,105 @@ function renderAgentEvent(event, seenPendingIds = new Set()) {
   return "";
 }
 
+function renderAgentReasoning(reasoning) {
+  if (!reasoning) return "";
+  return `<details class="agent-reasoning">
+    <summary>
+      <svg class="agent-reasoning-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6m-5 3h4M8.6 14.8A6.5 6.5 0 1 1 15.4 14.8c-.9.7-1.4 1.6-1.4 2.2h-4c0-.6-.5-1.5-1.4-2.2Z"/></svg>
+      <span class="agent-reasoning-label">思考完成</span>
+      <svg class="agent-reasoning-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+    </summary>
+    <div>${escapeHtml(reasoning).replaceAll("\n", "<br>")}</div>
+  </details>`;
+}
+
 function renderAgentMessage(message, seenPendingIds = new Set()) {
   const events = message.metadata?.events || [];
   const content = message.content
-    ? `<div class="${message.role === "assistant" ? "agent-markdown" : "agent-plain"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content).replaceAll("\n", "<br>")}</div>`
+    ? `<div class="agent-message-body ${message.role === "assistant" ? "agent-markdown" : "agent-plain"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content).replaceAll("\n", "<br>")}</div>`
     : "";
   return `<article class="agent-message ${message.role}">
+    ${message.role === "assistant" ? renderAgentReasoning(message.metadata?.reasoning) : ""}
     ${content}
     ${events.map((event) => renderAgentEvent(event, seenPendingIds)).join("")}
   </article>`;
+}
+
+function createStreamingAgentMessage(container) {
+  const article = document.createElement("article");
+  article.className = "agent-message assistant streaming";
+  article.innerHTML = `<details class="agent-reasoning is-thinking hidden">
+    <summary>
+      <svg class="agent-reasoning-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6m-5 3h4M8.6 14.8A6.5 6.5 0 1 1 15.4 14.8c-.9.7-1.4 1.6-1.4 2.2h-4c0-.6-.5-1.5-1.4-2.2Z"/></svg>
+      <span class="agent-reasoning-label">正在思考…</span>
+      <svg class="agent-reasoning-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+    </summary>
+    <div></div>
+  </details>
+  <div class="agent-stream-status">正在思考…</div>
+  <div class="agent-message-body agent-markdown hidden"></div>
+  <div class="agent-stream-events"></div>`;
+  container.append(article);
+  const reasoning = article.querySelector(".agent-reasoning");
+  const reasoningContent = reasoning.querySelector("div");
+  const status = article.querySelector(".agent-stream-status");
+  const content = article.querySelector(".agent-message-body");
+  const events = article.querySelector(".agent-stream-events");
+  let text = "";
+  let reasoningText = "";
+
+  function scroll() {
+    container.scrollTop = container.scrollHeight;
+  }
+
+  return {
+    article,
+    handle(event) {
+      if (event.type === "reasoning_delta") {
+        reasoningText += event.delta || "";
+        reasoning.classList.remove("hidden");
+        reasoningContent.textContent = reasoningText;
+      } else if (event.type === "text_delta") {
+        text += event.delta || "";
+        content.classList.remove("hidden");
+        content.innerHTML = renderMarkdown(text);
+        status.classList.add("hidden");
+      } else if (event.type === "status") {
+        status.textContent = event.label || "正在处理…";
+        status.classList.remove("hidden");
+      } else if (event.type === "tool_start") {
+        status.textContent = `正在调用工具 · ${event.label || "处理物品"}`;
+        status.classList.remove("hidden");
+      } else if (event.type === "tool_end") {
+        status.textContent = event.status === "error"
+          ? `工具调用失败 · ${event.label || "处理物品"}`
+          : event.status === "waiting_confirmation"
+            ? `等待确认 · ${event.label || "处理物品"}`
+            : `工具调用完成 · ${event.label || "处理物品"}`;
+      } else if (event.type === "agent_event") {
+        const markup = renderAgentEvent(event.event);
+        if (markup) events.insertAdjacentHTML("beforeend", markup);
+        if (event.event?.pendingAction) status.classList.add("hidden");
+      } else if (event.type === "done" && event.result?.message) {
+        article.outerHTML = renderAgentMessage(event.result.message);
+      }
+      scroll();
+    }
+  };
+}
+
+async function streamAgentMessage(container, content) {
+  const streaming = createStreamingAgentMessage(container);
+  let result = null;
+  await apiStream("/api/agent/messages/stream", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: state.activeConversationId, content })
+  }, (event) => {
+    if (event.type === "done") result = event.result;
+    streaming.handle(event);
+  });
+  if (!result) throw new Error("Agent 流式响应意外中断");
+  return result;
 }
 
 async function loadAgentMessages() {
@@ -2096,13 +2228,13 @@ $("#agentForm").addEventListener("submit", async (event) => {
   if (voiceButton) updateVoiceButtonAvailability(event.target);
   textarea.value = "";
   resizeAgentTextarea(textarea);
-  $("#agentMessages").insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="agentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
+  $("#agentMessages").insertAdjacentHTML("beforeend", renderAgentMessage({ role: "user", content, metadata: null }));
   $("#agentMessages").scrollTop = $("#agentMessages").scrollHeight;
   try {
-    await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
+    await streamAgentMessage($("#agentMessages"), content);
     await Promise.all([loadConversations(), loadFoods(), loadActivities()]);
   } catch (error) {
-    $("#agentThinking")?.remove();
+    $("#agentMessages .agent-message.streaming:last-of-type")?.remove();
     textarea.value = content;
     resizeAgentTextarea(textarea);
     toast(`发送失败，输入内容已保留：${agentSendErrorMessage(error)}`);
@@ -2122,8 +2254,8 @@ $("#quickAgentForm").addEventListener("submit", async (event) => {
   openQuickAgent({ focus: false, loadMessages: false });
   const messages = $("#quickAgentMessages");
   messages.querySelector(".agent-empty")?.remove();
-  $("#quickAgentThinking")?.remove();
-  messages.insertAdjacentHTML("beforeend", `<article class="agent-message user"><div>${escapeHtml(content)}</div></article><article id="quickAgentThinking" class="agent-message assistant thinking"><div>正在处理…</div></article>`);
+  messages.querySelector(".agent-message.streaming")?.remove();
+  messages.insertAdjacentHTML("beforeend", renderAgentMessage({ role: "user", content, metadata: null }));
   messages.scrollTop = messages.scrollHeight;
   await ensureQuickConversation();
   const button = event.target.querySelector('[type="submit"]');
@@ -2132,13 +2264,13 @@ $("#quickAgentForm").addEventListener("submit", async (event) => {
   button.disabled = true;
   if (voiceButton) updateVoiceButtonAvailability(event.target);
   try {
-    await api("/api/agent/messages", { method: "POST", body: JSON.stringify({ conversationId: state.activeConversationId, content }) });
+    await streamAgentMessage(messages, content);
     textarea.value = "";
     resizeAgentTextarea(textarea);
     await Promise.all([loadConversations(), loadFoods(), loadActivities()]);
     await loadQuickAgentMessages();
   } catch (error) {
-    $("#quickAgentThinking")?.remove();
+    messages.querySelector(".agent-message.streaming")?.remove();
     textarea.value = content;
     resizeAgentTextarea(textarea);
     const errorMessage = agentSendErrorMessage(error);

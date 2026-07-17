@@ -28,7 +28,7 @@ test("the page loads markdown-it and uses the shared markdown adapter", () => {
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.match(html, /<script src="\/vendor\/markdown-it\.js\?v=14\.3\.0"><\/script>/);
   assert.match(html, /<script src="\/markdown\.js\?v=20260711-3"><\/script>/);
-  assert.match(html, /<script src="\/app\.js\?v=20260717-3"><\/script>/);
+  assert.match(html, /<script src="\/app\.js\?v=20260717-6"><\/script>/);
   assert.match(app, /const \{ renderMarkdown \} = window\.XianZhiMarkdown/);
   assert.doesNotMatch(app, /function createMarkdownRenderer\(\)/);
 });
@@ -92,6 +92,8 @@ test("overview removes its embedded assistant and exposes a global quick assista
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   assert.doesNotMatch(html, /id="overviewAgentForm"|id="overviewAgentResult"|data-agent-example=/);
   assert.match(html, /class="link welcome-manual-add"/);
+  assert.match(html, /class="overview-agent-hint"/);
+  assert.match(html, /长按右下角的语音按钮说话，轻点打开文字输入/);
   assert.match(html, /data-quick-agent-prompt="家里有哪些三天内到期的物品？"/);
   assert.match(html, /data-quick-agent-prompt="根据冰箱现有食材，今天可以做什么菜？"/);
   assert.equal((html.match(/data-quick-agent-prompt=/g) || []).length, 6);
@@ -100,6 +102,7 @@ test("overview removes its embedded assistant and exposes a global quick assista
   assert.match(html, />推荐消耗菜谱<\/button>/);
   assert.match(html, />记录新物品<\/button>/);
   assert.match(css, /\.overview-agent-shortcuts \{ display: flex; flex-wrap: wrap;/);
+  assert.match(css, /\.overview-agent-hint/);
   assert.match(app, /shortcut\.dataset\.quickAgentPrompt/);
   assert.match(app, /form\.requestSubmit\(\)/);
   assert.match(html, /id="quickAgentForm"[\s\S]*id="quickAgentDialog"[\s\S]*id="quickAgentVoice"/);
@@ -203,13 +206,16 @@ test("conversation history provides an owner-scoped delete interaction", () => {
   const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
   const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
-  assert.match(html, /styles\.css\?v=20260717-3/);
+  assert.match(html, /styles\.css\?v=20260717-7/);
   assert.match(app, /data-delete-conversation/);
   assert.match(app, /删除历史对话/);
   assert.match(app, /method: "DELETE"/);
   assert.match(app, /state\.activeConversationId = result\.conversations\[0\]\?\.id \|\| null/);
   assert.match(css, /\.conversation-delete/);
-  assert.match(css, /\.conversation-delete \{ opacity: 1; \}/);
+  assert.match(css, /\.conversation-delete \{[\s\S]*position: absolute; top: 7px; right: 7px/);
+  assert.match(css, /\.conversation-panel \{ align-self: start; \}/);
+  assert.match(css, /\.conversation-head > \.muted \{[\s\S]*text-overflow: ellipsis/);
+  assert.match(app, /<span aria-hidden="true">×<\/span>/);
   assert.match(server, /conversationMatch && req\.method === "DELETE"/);
   assert.match(server, /agentService\.deleteConversation\(user\.id/);
 });
@@ -217,7 +223,7 @@ test("conversation history provides an owner-scoped delete interaction", () => {
 test("global quick agent only reuses the latest conversation for one hour", () => {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
-  assert.match(html, /app\.js\?v=20260717-3/);
+  assert.match(html, /app\.js\?v=20260717-6/);
   assert.match(app, /const QUICK_CONVERSATION_REUSE_MS = 60 \* 60 \* 1000/);
   assert.match(app, /async function ensureQuickConversation\(\)/);
   assert.match(app, /const latest = state\.conversations\[0\]/);
@@ -225,6 +231,25 @@ test("global quick agent only reuses the latest conversation for one hour", () =
   assert.match(app, /\$\("#quickAgentForm"\)[\s\S]*await ensureQuickConversation\(\)/);
   assert.match(app, /openQuickAgent\(\{ focus: false, loadMessages: false \}\)/);
   assert.match(app, /loadQuickAgentMessages\(\)/);
+});
+
+test("agent renders streamed text, folded think content and tool progress", () => {
+  const app = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+  const server = fs.readFileSync(path.resolve(publicDir, "../src/server.js"), "utf8");
+  assert.match(app, /\/api\/agent\/messages\/stream/);
+  assert.match(app, /response\.body\.getReader\(\)/);
+  assert.match(app, /event\.type === "reasoning_delta"/);
+  assert.match(app, /正在调用工具/);
+  assert.match(app, /<details class="agent-reasoning/);
+  assert.match(app, /agent-reasoning-bulb/);
+  assert.match(app, />思考完成<\/span>/);
+  assert.match(css, /\.agent-reasoning/);
+  assert.match(css, /\.agent-reasoning-chevron/);
+  assert.match(css, /\.agent-stream-status/);
+  assert.match(server, /"application\/x-ndjson; charset=utf-8"/);
+  assert.match(server, /"X-Accel-Buffering": "no"/);
+  assert.match(server, /agentService\.sendMessageStream/);
 });
 
 test("quick assistant keeps text fallback and preserves failed voice or Agent input", () => {

@@ -1152,6 +1152,29 @@ async function routeApi(req, res, url) {
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/agent/messages/stream") {
+    const body = await readJson(req);
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no"
+    });
+    const writeEvent = (event) => res.write(`${JSON.stringify(event)}\n`);
+    try {
+      const result = await agentService.sendMessageStream(user.id, body.conversationId, body.content, writeEvent);
+      writeEvent({ type: "done", result });
+    } catch (error) {
+      writeEvent({
+        type: "error",
+        error: error.message || "Agent 请求失败",
+        code: error.code || "",
+        status: error.statusCode || 500
+      });
+    }
+    res.end();
+    return true;
+  }
+
   const agentActionMatch = url.pathname.match(/^\/api\/agent\/actions\/([^/]+)\/(confirm|cancel)$/);
   if (agentActionMatch && req.method === "POST") {
     const id = decodeURIComponent(agentActionMatch[1]);
