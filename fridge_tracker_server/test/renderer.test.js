@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const sharp = require("sharp");
 const { FRAME_BYTES } = require("../src/domain");
-const { packNativeFourColor, packNativeTriColor, progressWidth, renderDashboardHtml } = require("../src/renderer");
+const { displayTypographyCss, packNativeFourColor, packNativeTriColor, progressWidth, renderDashboardHtml, renderFrame } = require("../src/renderer");
 
 function food(index) {
   return {
@@ -144,6 +144,34 @@ test("portrait pixels rotate into native 800x480 coordinates for drawNative", as
 
   assert.equal(frame.length, FRAME_BYTES);
   assert.equal(frame[nativeTopRightByte], 0x54);
+});
+
+test("GDEM075F53 uses the same 96000-byte four-color frame contract as GDEM075F52", async () => {
+  const pixels = Buffer.alloc(800 * 480 * 4, 255);
+  pixels.set([16, 16, 16, 255], 0);
+  pixels.set([242, 189, 22, 255], 4);
+  pixels.set([201, 28, 34, 255], 8);
+
+  const png = await sharp(pixels, { raw: { width: 800, height: 480, channels: 4 } }).png().toBuffer();
+  const f52 = await packNativeFourColor(png, "landscape", "gdem075f52");
+  const f53 = await packNativeFourColor(png, "landscape", "gdem075f53");
+
+  assert.equal(f53.length, 96000);
+  assert.deepEqual(f53, f52);
+});
+
+test("renderer loads bundled GNU Unifont and Fusion Pixel before producing an F53 frame", async () => {
+  const css = displayTypographyCss();
+  assert.match(css, /GNU Unifont/);
+  assert.match(css, /Fusion Pixel 12px Proportional/);
+  assert.match(css, /\.food \.name/);
+
+  const result = await renderFrame([food(1)], "2026/08/27 22:30", "gdem075f53", "portrait");
+  const metadata = await sharp(result.png).metadata();
+
+  assert.equal(result.frame.length, 96000);
+  assert.equal(metadata.width, 480);
+  assert.equal(metadata.height, 800);
 });
 
 test("tri-color frames pack black and red into two 15000-byte planes", async () => {

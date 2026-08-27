@@ -15,7 +15,7 @@ const {
   sortFoods
 } = require("../src/domain");
 
-test("four-color native frame size matches the two supported 800x480 panels", () => {
+test("four-color native frame size matches the supported 800x480 panels", () => {
   assert.equal(FRAME_BYTES, 96000);
 });
 
@@ -36,6 +36,20 @@ test("panel profiles describe both four-color and 4.2-inch tri-color frames", ()
     }
   );
   assert.equal(panelConfig("gdem075f52").frameBytes, 96000);
+  assert.deepEqual(
+    { ...panelConfig("GDEM075F53") },
+    {
+      id: "gdem075f53",
+      label: "GDEM075F53 7.5 寸四色",
+      width: 800,
+      height: 480,
+      colorMode: "four-color",
+      frameFormat: "2bpp-bwyr",
+      frameBytes: 96000,
+      landscapeRows: 8,
+      portraitRows: 9
+    }
+  );
   assert.throws(() => panelProfile("unknown"), /unsupported panel profile/);
 });
 

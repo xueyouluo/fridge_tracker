@@ -14,6 +14,17 @@ const PANEL_CONFIGS = Object.freeze({
     landscapeRows: 8,
     portraitRows: 9
   }),
+  gdem075f53: Object.freeze({
+    id: "gdem075f53",
+    label: "GDEM075F53 7.5 寸四色",
+    width: 800,
+    height: 480,
+    colorMode: "four-color",
+    frameFormat: "2bpp-bwyr",
+    frameBytes: 96000,
+    landscapeRows: 8,
+    portraitRows: 9
+  }),
   gdem0397f81: Object.freeze({
     id: "gdem0397f81",
     label: "GDEM0397F81 3.97 寸四色",

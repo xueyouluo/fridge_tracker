@@ -1,6 +1,8 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { chromium } = require("playwright");
 const sharp = require("sharp");
 const {
@@ -10,6 +12,82 @@ const {
   maxDisplayRows,
   panelConfig
 } = require("./domain");
+
+const DISPLAY_UNIFONT_FAMILY = "GNU Unifont";
+const DISPLAY_UNIFONT_PATH = path.join(__dirname, "..", "assets", "fonts", "unifont-17.0.05.otf");
+const DISPLAY_UNIFONT_URL = "https://xianzhitie.local/fonts/unifont-17.0.05.otf";
+const DISPLAY_FUSION_FONT_FAMILY = "Fusion Pixel 12px Proportional";
+const DISPLAY_FUSION_FONT_PATH = path.join(__dirname, "..", "assets", "fonts", "fusion-pixel-12px-proportional-zh_hans.ttf.woff2");
+const DISPLAY_FUSION_FONT_URL = "https://xianzhitie.local/fonts/fusion-pixel-12px-proportional-zh-hans.ttf.woff2";
+let displayFontBuffersPromise;
+
+function displayFontBuffers() {
+  displayFontBuffersPromise ||= Promise.all([
+    fs.readFile(DISPLAY_UNIFONT_PATH),
+    fs.readFile(DISPLAY_FUSION_FONT_PATH)
+  ]);
+  return displayFontBuffersPromise;
+}
+
+function displayTypographyCss() {
+  return `
+    @font-face {
+      font-family:"${DISPLAY_UNIFONT_FAMILY}";
+      src:url("${DISPLAY_UNIFONT_URL}") format("opentype");
+      font-style:normal;
+      font-weight:400;
+      font-display:block;
+    }
+    @font-face {
+      font-family:"${DISPLAY_FUSION_FONT_FAMILY}";
+      src:url("${DISPLAY_FUSION_FONT_URL}") format("woff2");
+      font-style:normal;
+      font-weight:100 1000;
+      font-display:block;
+    }
+    html, body {
+      --display-fusion-font:"${DISPLAY_FUSION_FONT_FAMILY}", monospace;
+      --display-unifont:"${DISPLAY_UNIFONT_FAMILY}", monospace;
+      font-family:var(--display-fusion-font) !important;
+      font-synthesis:none;
+      line-break:strict;
+      word-break:normal;
+      overflow-wrap:anywhere;
+    }
+    body, body * {
+      font-family:var(--display-fusion-font) !important;
+      font-synthesis:none !important;
+      font-weight:400 !important;
+    }
+    h1 {
+      font-family:var(--display-fusion-font) !important;
+      font-size:24px !important;
+      line-height:30px !important;
+      letter-spacing:0 !important;
+    }
+    .summary > span,
+    .food .name,
+    .food .days,
+    .empty {
+      font-family:var(--display-unifont) !important;
+      font-size:16px !important;
+      line-height:20px !important;
+      letter-spacing:0 !important;
+    }
+    .right,
+    .food .meta,
+    footer,
+    .empty small {
+      font-family:var(--display-fusion-font) !important;
+      font-size:12px !important;
+      line-height:15px !important;
+      letter-spacing:0 !important;
+    }
+    footer {
+      line-height:12px !important;
+    }
+  `;
+}
 
 function htmlEscape(value) {
   return String(value ?? "")
@@ -237,10 +315,38 @@ async function renderPng(html, panel, orientation) {
   const isPortrait = displayOrientation(orientation) === "portrait";
   const width = isPortrait ? config.height : config.width;
   const height = isPortrait ? config.width : config.height;
+  const [unifontBuffer, fusionFontBuffer] = await displayFontBuffers();
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width, height, deviceScaleFactor: 1 } });
+    await page.route(DISPLAY_UNIFONT_URL, (route) => route.fulfill({
+      body: unifontBuffer,
+      contentType: "font/otf"
+    }));
+    await page.route(DISPLAY_FUSION_FONT_URL, (route) => route.fulfill({
+      body: fusionFontBuffer,
+      contentType: "font/woff2"
+    }));
     await page.setContent(html, { waitUntil: "load" });
+    await page.addStyleTag({ content: displayTypographyCss() });
+    const loadedFonts = await page.evaluate(async (fonts) => {
+      const sample = "鲜知贴 0123456789";
+      await Promise.all(fonts.map(({ family, size }) => document.fonts.load(`${size}px "${family}"`, sample)));
+      await document.fonts.ready;
+      return Object.fromEntries(fonts.map(({ family, size }) => [
+        family,
+        document.fonts.check(`${size}px "${family}"`, sample)
+      ]));
+    }, [
+      { family: DISPLAY_UNIFONT_FAMILY, size: 16 },
+      { family: DISPLAY_FUSION_FONT_FAMILY, size: 12 }
+    ]);
+    const unavailableFonts = Object.entries(loadedFonts)
+      .filter(([, loaded]) => !loaded)
+      .map(([family]) => family);
+    if (unavailableFonts.length) {
+      throw new Error(`display fonts unavailable: ${unavailableFonts.join(", ")}`);
+    }
     return await page.screenshot({ type: "png", clip: { x: 0, y: 0, width, height } });
   } finally {
     await browser.close();
@@ -345,4 +451,4 @@ async function renderFrame(items, generatedAt, panel, orientation = DEFAULT_DISP
   return { etag, frame, frameFormat: config.frameFormat, html, png };
 }
 
-module.exports = { packNativeFourColor, packNativeTriColor, progressWidth, renderDashboardHtml, renderFrame };
+module.exports = { displayTypographyCss, packNativeFourColor, packNativeTriColor, progressWidth, renderDashboardHtml, renderFrame };
