@@ -9,7 +9,14 @@ ESP32-C3 / ESP32-S3 固件、三色 / 四色墨水屏渲染，以及 4.2 寸和 
 3D 打印外壳。你可以直接使用我们提供的托管服务，只制作硬件；也可以把服务端
 部署在家里的电脑、NAS 或自己的云服务器上。
 
-![鲜知贴 7.2 寸墨水屏实物](models/epaper_enclosure_7_2/preview.png)
+![鲜知贴 7.5 寸四色墨水屏成品](assets/jiazhitie-7.5-inch-four-color-epaper.png)
+
+> [!TIP]
+> 不想自行制作硬件？可以通过小红书查看
+> [「7.5 英寸四色墨水屏冰箱贴」](https://xhslink.com/m/4mQU4Nxcc22)购买成品。
+> 购买的成品需先前往
+> [硬件固件更新页面](https://fridge.followllm.online/hardware-update)刷入 `v1.0.0`
+> 固件，才能连接并使用本仓库的开源代码部署的服务。
 
 ## 能做什么
 
