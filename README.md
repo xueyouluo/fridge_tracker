@@ -1,3 +1,5 @@
+
+
 # 鲜知贴
 
 [项目介绍网站](https://xueyou-diy-lab.yummy-tulip-8164.chatgpt.site/) · [在线体验](https://fridge.followllm.online) · [Roadmap](ROADMAP.md)
@@ -193,7 +195,7 @@ ipconfig getifaddr en0
 
 设备重启后会向服务注册、下载第一幅画面、刷新屏幕并休眠。已有设备需要重新配置时，
 按住 BOOT（GPIO0）复位可清空 NVS 和缓存帧；正常断电再上电也会在本轮画面检查后
-临时开放配置热点。
+临时开放最多 10 分钟的配置热点。
 
 ### 第 7 步：确认完整链路
 
