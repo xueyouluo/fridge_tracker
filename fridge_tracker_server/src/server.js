@@ -13,6 +13,7 @@ const {
   displayOrientation,
   frameSnapshotKey,
   localDateKey,
+  maxDisplayRows,
   panelConfig,
   panelProfile
 } = require("./domain");
@@ -64,6 +65,7 @@ const databasePath = path.resolve(ROOT, config.databasePath);
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 const db = new DatabaseSync(databasePath);
 const frameCache = new Map();
+const DEVICE_PAGE_PROTOCOL_VERSION = "device-pages-v1";
 
 initializeDatabase();
 const activityService = createActivityService({ db });
@@ -632,9 +634,8 @@ function invalidateFrames() {
   frameCache.clear();
 }
 
-async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_ORIENTATION) {
-  const foods = allFoods(ownerId);
-  const today = localDateKey(config.timezone);
+async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_ORIENTATION, content = null) {
+  const { foods, today } = content || { foods: allFoods(ownerId), today: localDateKey(config.timezone) };
   const snapshot = frameSnapshotKey(foods, today, panel, orientation);
   const key = `${ownerId}:${panel}:${orientation}:${snapshot}`;
   if (frameCache.has(key)) return frameCache.get(key);
@@ -644,6 +645,21 @@ async function getRenderedFrame(ownerId, panel, orientation = DEFAULT_DISPLAY_OR
   }
   frameCache.set(key, result);
   return result;
+}
+
+function getSinglePageState(device, panel, orientation) {
+  const foods = allFoods(device.household_id);
+  const today = localDateKey(config.timezone);
+  const viewKey = sha256(JSON.stringify({
+    protocol: DEVICE_PAGE_PROTOCOL_VERSION,
+    householdId: device.household_id,
+    panel,
+    orientation,
+    layout: "single-page"
+  }));
+  const revision = sha256(`${viewKey}:${frameSnapshotKey(foods, today, panel, orientation)}`);
+  const remainingItems = Math.max(0, foods.length - maxDisplayRows(orientation, panel));
+  return { foods, today, viewKey, revision, remainingItems };
 }
 
 function readJson(req, maxChars = 64 * 1024) {
@@ -877,6 +893,40 @@ async function routeApi(req, res, url) {
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/device/pages") {
+    const device = requireDevice(req, res);
+    if (!device) return true;
+    if (!device.household_id) {
+      sendJson(res, 409, { error: "device has not been paired", code: "device_not_paired" });
+      return true;
+    }
+    const panel = panelProfile(url.searchParams.get("panel") || device.panel_profile);
+    const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
+    const state = getSinglePageState(device, panel, orientation);
+    const headers = {
+      ETag: `"${state.revision}"`,
+      "Cache-Control": "no-cache",
+      "X-Display-Orientation": orientation,
+      "X-Page-Count": "1",
+      "X-Page-Protocol": DEVICE_PAGE_PROTOCOL_VERSION,
+      "X-Page-View-Key": state.viewKey
+    };
+    if (req.headers["if-none-match"] === headers.ETag) {
+      res.writeHead(304, headers);
+      res.end();
+      return true;
+    }
+    sendJson(res, 200, {
+      pageCount: 1,
+      protocolVersion: 1,
+      remaining: { items: state.remainingItems, todos: 0 },
+      revision: state.revision,
+      truncated: state.remainingItems > 0,
+      viewKey: state.viewKey
+    }, headers);
+    return true;
+  }
+
   if (req.method === "GET" && (url.pathname === "/api/device/frame.bin" || url.pathname === "/api/device/frame.png")) {
     const device = requireDevice(req, res);
     if (!device) return true;
@@ -886,10 +936,33 @@ async function routeApi(req, res, url) {
     }
     const panel = panelProfile(url.searchParams.get("panel") || device.panel_profile);
     const orientation = displayOrientation(url.searchParams.get("orientation") || DEFAULT_DISPLAY_ORIENTATION);
-    const frame = await getRenderedFrame(device.household_id, panel, orientation);
+    const paging = url.searchParams.get("paging") === "1";
+    let pageState = null;
+    if (paging) {
+      const page = url.searchParams.get("page");
+      if (!/^\d+$/.test(String(page || ""))) {
+        sendJson(res, 400, { error: "page must be a zero-based integer", code: "device_page_invalid" });
+        return true;
+      }
+      if (Number(page) !== 0) {
+        sendJson(res, 416, { error: "page is outside the available range", code: "device_page_out_of_range" });
+        return true;
+      }
+      const revision = url.searchParams.get("revision");
+      if (!revision) {
+        sendJson(res, 400, { error: "revision is required for paged frames", code: "device_page_revision_required" });
+        return true;
+      }
+      pageState = getSinglePageState(device, panel, orientation);
+      if (revision !== pageState.revision) {
+        sendJson(res, 409, { error: "page set changed; fetch the manifest again", code: "device_page_revision_changed" });
+        return true;
+      }
+    }
+    const frame = await getRenderedFrame(device.household_id, panel, orientation, pageState);
     db.prepare("UPDATE devices SET last_seen_at = ?, panel_profile = ?, updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), panel, new Date().toISOString(), device.id);
-    if (req.headers["if-none-match"] === frame.etag) {
+    if (!paging && req.headers["if-none-match"] === frame.etag) {
       res.writeHead(304, { ETag: frame.etag, "Cache-Control": "no-cache" });
       res.end();
       return true;
@@ -898,6 +971,15 @@ async function routeApi(req, res, url) {
     const type = url.pathname.endsWith(".png") ? "image/png" : "application/octet-stream";
     const headers = { ETag: frame.etag, "X-Panel-Profile": panel, "X-Display-Orientation": orientation };
     if (!url.pathname.endsWith(".png")) headers["X-Frame-Format"] = panelConfig(panel).frameFormat;
+    if (paging) {
+      Object.assign(headers, {
+        "X-Page-Count": "1",
+        "X-Page-Index": "0",
+        "X-Page-Protocol": DEVICE_PAGE_PROTOCOL_VERSION,
+        "X-Page-Revision": pageState.revision,
+        "X-Page-View-Key": pageState.viewKey
+      });
+    }
     sendBuffer(res, 200, data, type, headers);
     return true;
   }
